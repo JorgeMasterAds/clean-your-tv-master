@@ -114,11 +114,13 @@ public class SettingsActivity extends Activity {
     }
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
-        private static final int MAIN = 0, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5;
-        private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
+        private static final int MAIN = 0, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5, MASTER = 6;
+        private static final float LIST_ROW_H = 60, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
-        private static final float LIST_X = 1000, LIST_R = 1824, LIST_TOP = 186, ROW_H = 74, ROW_GAP = 8;
-        private static final int AMBER = 0xFFFFC266, INK = 0xFF1C1C1E;
+        private static final float LIST_X = 96, LIST_R = 1000, LIST_TOP = 250, ROW_H = 62, ROW_GAP = 6;
+        // The info panel on the right: what the focused option does and how it is now.
+        private static final float PANEL_X = 1080, PANEL_R = 1824, PANEL_TOP = 250, PANEL_BOTTOM = 980;
+        private static final int AMBER = 0xFFFFC266, INK = 0xFFFFFFFF;
 
         private final SettingsActivity activity;
         private final Scene scene = new Scene();
@@ -196,9 +198,11 @@ public class SettingsActivity extends Activity {
                             Ui.tr("Ajustes do Início", "Home Settings"),
                             Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Serviços", "Services"),
                             Ui.tr("Conta TMDB, ", "TMDB account, ") + account(), Ui.tr("Conta Stremio, ", "Stremio account, ") + stremioState(),
-                            Ui.tr("Categoria da Início, ", "Home category, ") + Recs.categoryLabel(), Ui.tr("Ajustes da TV", "TV Settings")};
+                            Ui.tr("Categoria da Início, ", "Home category, ") + Recs.categoryLabel(), Ui.tr("Abas e Stremio", "Tabs and Stremio"),
+                            Ui.tr("Ajustes da TV", "TV Settings")};
                     return row < names.length ? names[row] : "";
                 }
+                case MASTER:
                 case HOME_SETTINGS: {
                     String[] labels = settingLabels(), values = settingValues();
                     return row < labels.length ? labels[row] + ", " + values[row] : "";
@@ -260,7 +264,7 @@ public class SettingsActivity extends Activity {
             if (!running) return;
             boolean moving = false;
             for (Spring s : pop) moving |= !s.settled();
-            if (moving || SystemClock.uptimeMillis() - lastSky >= 100) invalidate();
+            invalidate();   // the animated red background moves on every frame
             Choreographer.getInstance().postFrameCallback(this);
         }
 
@@ -291,14 +295,15 @@ public class SettingsActivity extends Activity {
             spinner.setStrokeCap(Paint.Cap.ROUND);
             spinner.setStrokeWidth(3.5f * k);
             white = new Paint(Paint.ANTI_ALIAS_FLAG);
-            white.setColor(0xFFF5F5F7);
+            white.setColor(0xFFD3122C);   // the focused row: Master red
             shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
             shadow.setMaskFilter(new BlurMaskFilter(22 * k, BlurMaskFilter.Blur.NORMAL));
         }
 
         private int rowCount() {
             switch (screen) {
-                case MAIN: return 9;
+                case MAIN: return 10;
+                case MASTER:
                 case HOME_SETTINGS: return settingLabels().length;
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
                 case SHELF_EDIT: return Math.min(PICK_VISIBLE, shelfRows.size());
@@ -321,19 +326,9 @@ public class SettingsActivity extends Activity {
                 lastSky = up;
                 scene.advance(seconds);
             }
-            scene.drawBackground(c);
-            // Clean Your TV Master: a deep red tone over the sky.
-            if (redTone == null) redTone = new Paint();
-            redTone.setShader(new android.graphics.LinearGradient(0, 0, w, getHeight(), 0xCC5A0010, 0x99120004, android.graphics.Shader.TileMode.CLAMP));
-            c.drawRect(0, 0, w, getHeight(), redTone);
-
-            // On the left: big symbol, title, description.
-            float cx = 500 * k;
-            Symbols.draw(getContext(), c, "sparkles", cx, 400 * k, 150 * k, 0xFFFF4D5E);
-            c.drawText("Clean Your TV Master", cx, 612 * k, title);
-            c.drawText(Ui.tr("Início, Stremio e controle da TV", "Home screen, Stremio and the TV remote"), cx, 660 * k, subtitle);
-            c.drawText(versionName(getContext()), cx, 704 * k, version);
-            c.drawText(Ui.tr("Criado por Jorge Master", "Made by Jorge Master") + " · github.com/JorgeMasterAds/clean-your-tv-master", cx, 742 * k, version);
+            drawMasterBackground(c, seconds);
+            drawHeader(c);
+            drawPanel(c);
 
             if (screen == MAIN) drawMain(c); else if (screen == PICKER) drawPicker(c); else if (screen == SHELF_EDIT) drawShelfEditor(c); else drawList(c);
         }
@@ -342,17 +337,19 @@ public class SettingsActivity extends Activity {
             String[] labels = {Ui.tr("Tela de Descanso", "Screensaver"), Ui.tr("Ajustes do Início", "Home Settings"),
                     Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Serviços", "Services"),
                     Ui.tr("Conta TMDB", "TMDB account"), Ui.tr("Conta Stremio", "Stremio account"),
-                    Ui.tr("Categoria da Início", "Home category"), Ui.tr("Ajustes da TV", "TV Settings")};
+                    Ui.tr("Categoria da Início", "Home category"), Ui.tr("Abas e Stremio", "Tabs and Stremio"),
+                    Ui.tr("Ajustes da TV", "TV Settings")};
             for (int i = 0; i < labels.length; i++) {
                 float y = (LIST_TOP + i * (ROW_H + ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
-                c.drawText(labels[i], rowRect.left + 30 * k, base, rowLabel);
+                Symbols.draw(getContext(), c, MAIN_ICONS[i], rowRect.left + 44 * k, rowRect.centerY(), 30 * k, blend(0xFFFF4D5E, 0xFFFFFFFF, f));
+                c.drawText(labels[i], rowRect.left + 84 * k, base, rowLabel);
                 float right = rowRect.right - 30 * k;
                 if (i == 0 || i == 5 || i == 6 || i == 7) {
-                    rowValue.setColor(blend(0x8CFFFFFF, 0x8C1C1C1E, f));
+                    rowValue.setColor(blend(0x8CFFFFFF, 0xD9FFFFFF, f));
                     // The screensaver's style: ← → change it (shown while focused), OK shows it.
                     String style = styleName(Prefs.screensaverStyle());
                     String value = i == 5 ? account() : i == 6 ? stremioState() : i == 7 ? Recs.categoryLabel()
@@ -360,13 +357,231 @@ public class SettingsActivity extends Activity {
                     c.drawText(value, right, base, rowValue);
                 } else {
                     float cw = Symbols.width(getContext(), "chevron_right", 22 * k);
-                    Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, blend(0x66FFFFFF, 0x991C1C1E, f));
+                    Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, blend(0x66FFFFFF, 0xE6FFFFFF, f));
                 }
             }
-            drawRecs(c, (LIST_TOP + labels.length * (ROW_H + ROW_GAP) + 46) * k);
         }
 
         private Paint redTone;
+        private Paint glowPaint, lineTitle, panelTitle;
+        private TextPaint panelText;
+        private android.graphics.RadialGradient[] glows;
+        private final android.graphics.Matrix glowMatrix = new android.graphics.Matrix();
+        private android.graphics.Bitmap logo;
+        private static final String[] MAIN_ICONS = {"bedtime", "home", "apps", "tune", "live_tv", "cloud", "sync", "search", "play", "tv_settings"};
+        private static final int GREET_ROW = 7;
+
+        /** Black with slow red lights drifting behind everything (about one full turn a minute). */
+        private void drawMasterBackground(Canvas c, float t) {
+            float W = w, H = getHeight();
+            c.drawColor(0xFF070708);
+            if (glows == null) {
+                glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                glows = new android.graphics.RadialGradient[] {
+                        new android.graphics.RadialGradient(0, 0, 1, new int[] {0xB0C8102E, 0x40800018, 0x00000000}, new float[] {0, 0.55f, 1}, android.graphics.Shader.TileMode.CLAMP),
+                        new android.graphics.RadialGradient(0, 0, 1, new int[] {0x90FF2D46, 0x30600010, 0x00000000}, new float[] {0, 0.5f, 1}, android.graphics.Shader.TileMode.CLAMP),
+                        new android.graphics.RadialGradient(0, 0, 1, new int[] {0x707A0010, 0x20300008, 0x00000000}, new float[] {0, 0.6f, 1}, android.graphics.Shader.TileMode.CLAMP)};
+            }
+            float[][] orbit = {{0.18f, 0.25f, 0.10f, 0.08f, 0.11f, 0.62f}, {0.82f, 0.78f, 0.12f, 0.10f, 0.07f, 0.48f}, {0.55f, 0.10f, 0.20f, 0.06f, 0.05f, 0.75f}};
+            for (int i = 0; i < glows.length; i++) {
+                float[] o = orbit[i];
+                float cx = W * (o[0] + o[2] * (float) Math.sin(t * o[4] + i * 2.1f));
+                float cy = H * (o[1] + o[3] * (float) Math.cos(t * o[4] * 1.3f + i));
+                float radius = W * o[5] * (1 + 0.08f * (float) Math.sin(t * 0.4f + i));
+                glowMatrix.setScale(radius, radius);
+                glowMatrix.postTranslate(cx, cy);
+                glows[i].setLocalMatrix(glowMatrix);
+                glowPaint.setShader(glows[i]);
+                c.drawRect(0, 0, W, H, glowPaint);
+            }
+            // A thin red line sweeping slowly under the header.
+            if (redTone == null) redTone = new Paint(Paint.ANTI_ALIAS_FLAG);
+            float sweep = (t * 0.08f) % 1.4f - 0.2f;
+            redTone.setShader(new android.graphics.LinearGradient(W * (sweep - 0.25f), 0, W * (sweep + 0.25f), 0,
+                    new int[] {0x00FF2D46, 0xCCFF2D46, 0x00FF2D46}, null, android.graphics.Shader.TileMode.CLAMP));
+            c.drawRect(LIST_X * k, 176 * k, PANEL_R * k, 178 * k, redTone);
+        }
+
+        /** The logo, the name and the credit, across the top. */
+        private void drawHeader(Canvas c) {
+            if (logo == null) {
+                int id = getResources().getIdentifier("icon", "drawable", getContext().getPackageName());
+                logo = id == 0 ? null : android.graphics.BitmapFactory.decodeResource(getResources(), id);
+            }
+            float x = LIST_X * k, top = 52 * k, size = 104 * k;
+            if (logo != null) {
+                tmp.set(x, top, x + size, top + size);
+                c.drawBitmap(logo, null, tmp, null);
+            }
+            if (lineTitle == null) {
+                lineTitle = Ui.text(Ui.displaySemibold, 52 * k, 0xFFFFFFFF);
+                lineTitle.setTextAlign(Paint.Align.LEFT);
+            }
+            float tx = x + size + 30 * k;
+            c.drawText("Clean Your TV Master", tx, top + 58 * k, lineTitle);
+            version.setTextAlign(Paint.Align.LEFT);
+            c.drawText(Ui.tr("Criado por Jorge Master", "Made by Jorge Master") + "  ·  " + versionName(getContext())
+                    + "  ·  github.com/JorgeMasterAds/clean-your-tv-master", tx, top + 98 * k, version);
+            version.setTextAlign(Paint.Align.CENTER);
+        }
+
+        private String[] mainInfo(int i) {
+            switch (i) {
+                case 0: return new String[] {Ui.tr("Tela de Descanso", "Screensaver"), Ui.tr("O que aparece quando a TV fica parada. As setas trocam o estilo, OK mostra agora.", "What shows when the TV sits idle. The arrows change the style, OK shows it now."), styleName(Prefs.screensaverStyle())};
+                case 1: return new String[] {Ui.tr("Ajustes do Início", "Home Settings"), Ui.tr("Idioma, temperatura, tema, relógio, clima, cidade e cotações.", "Language, temperature, theme, clock, weather, city and quotes."), ""};
+                case 2: return new String[] {Ui.tr("Prateleira", "Shelf"), Ui.tr("Quais apps aparecem na fileira da Início e em que ordem.", "Which apps sit on the Home row, and in what order."), ""};
+                case 3: return new String[] {Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Troque o que cada botão do controle abre: um app, uma entrada HDMI ou uma função. Vale de dentro de qualquer app.", "Change what each remote button opens: an app, an HDMI input or a function, from inside any app."), RemoteKeys.remoteName(getContext())};
+                case 4: return new String[] {Ui.tr("Serviços", "Services"), Ui.tr("Os streamings que você assina e o app que toca os trailers.", "The streaming services you pay for, and the app that plays trailers."), ""};
+                case 5: return new String[] {Ui.tr("Conta TMDB", "TMDB account"), Ui.tr("A chave grátis do TMDB traz as fotos, as sugestões, as categorias e os trailers.", "The free TMDB key brings the photos, picks, categories and trailers."), account()};
+                case 6: return new String[] {Ui.tr("Conta Stremio", "Stremio account"), Ui.tr("Liga a aba Continuar: o que você estava vendo no Stremio, com a barra de onde parou. Sem senha na TV: aparece um código para abrir no celular.", "Turns on the Continue tab: what you were watching in Stremio, with where you stopped. No password on the TV: a code to open on your phone."), stremioState()};
+                case 7: return new String[] {Ui.tr("Categoria da Início", "Home category"), Ui.tr("A lista que a fileira de categorias mostra primeiro. Na Início, é só andar pela fileira abaixo das abas.", "The list the category row shows first. On Home, just walk along the row under the tabs."), Recs.categoryLabel()};
+                case 8: return new String[] {Ui.tr("Abas e Stremio", "Tabs and Stremio"), Ui.tr("Ligue ou desligue as abas, escolha onde os títulos abrem, o app dos trailers, a troca do destaque, quantos títulos por aba, infantil e a saudação.", "Turn tabs on or off, pick where titles open, the trailer app, the hero timing, titles per tab, kids titles and the greeting."), ""};
+                default: return new String[] {Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("As configurações do Android TV: rede, som, imagem e apps.", "Android TV's own settings: network, sound, picture and apps."), ""};
+            }
+        }
+
+        private static final String[][] MASTER_INFO = {
+                {"Mostra até 5 títulos que você estava vendo no Stremio. Desligue se não usa o Stremio.", "Shows up to 5 titles you were watching in Stremio. Turn it off if you don't use Stremio."},
+                {"A fileira abaixo das abas: trailers, Top 10, em alta em cada streaming, nota alta, Marvel, DC e Anime. No fim de uma lista, passa para a próxima.", "The row under the tabs: trailers, Top 10, trending on each service, top rated, Marvel, DC and Anime. At the end of a list it moves on to the next."},
+                {"OK num título da Início ou do Explorar abre no Stremio ou na página do título aqui mesmo.", "OK on a title on Home or in Explore opens it in Stremio or on its page here."},
+                {"Onde tocam os trailers: SmartTube, YouTube ou o primeiro que a TV tiver.", "Where trailers play: SmartTube, YouTube or the first one the TV has."},
+                {"De quanto em quanto tempo o destaque passa para o próximo título sozinho.", "How often the hero moves on to the next title by itself."},
+                {"Quantos títulos cada aba mostra (o Continuar mostra até 5).", "How many titles each tab shows (Continue shows up to 5)."},
+                {"Filmes e séries infantis ficam fora das sugestões e das categorias.", "Kids movies and shows stay out of the picks and the categories."},
+                {"O nome depois de \"Bem-vindo\" no topo da Início. OK para mudar.", "The name after \"Welcome\" at the top of Home. OK to change it."},
+        };
+
+        /** What the focused option does, and how it is now; the TMDB status and credit at the bottom. */
+        private void drawPanel(Canvas c) {
+            if (panelTitle == null) {
+                panelTitle = Ui.text(Ui.displaySemibold, 40 * k, 0xFFFFFFFF);
+                panelTitle.setTextAlign(Paint.Align.LEFT);
+                panelText = new TextPaint(Ui.text(Ui.regular, 26 * k, 0xCCFFFFFF));
+            }
+            float x = PANEL_X * k, r = PANEL_R * k, top = PANEL_TOP * k, bottom = PANEL_BOTTOM * k;
+            tmp.set(x, top, r, bottom);
+            Paint glass = new Paint(Paint.ANTI_ALIAS_FLAG);
+            glass.setColor(0x66000000);
+            c.drawRoundRect(tmp, 28 * k, 28 * k, glass);
+            glass.setStyle(Paint.Style.STROKE);
+            glass.setStrokeWidth(2 * k);
+            glass.setColor(0x55FF2D46);
+            c.drawRoundRect(tmp, 28 * k, 28 * k, glass);
+            String name, about, now = "";
+            String icon = "sparkles";
+            if (screen == MAIN) {
+                String[] info = mainInfo(Math.min(focus, 9));
+                name = info[0];
+                about = info[1];
+                now = info[2];
+                icon = MAIN_ICONS[Math.min(focus, 9)];
+            } else if (screen == MASTER) {
+                String[] labels = masterLabels(), values = masterValues();
+                int i = Math.min(focus, labels.length - 1);
+                name = labels[i];
+                about = Ui.en ? MASTER_INFO[i][1] : MASTER_INFO[i][0];
+                now = values[i];
+                icon = "play";
+            } else if (screen == HOME_SETTINGS) {
+                name = Ui.tr("Ajustes do Início", "Home Settings");
+                about = Ui.tr("OK ou as setas mudam o valor.", "OK or the arrows change the value.");
+                icon = "home";
+            } else if (screen == REMOTE_KEYS || screen == PICKER) {
+                name = Ui.tr("Botões do Controle", "Remote Buttons");
+                about = Ui.tr("Escolha o botão e o que ele abre. Os outros continuam como sempre.", "Pick a button and what it opens. The rest work as always.");
+                icon = "tune";
+            } else {
+                name = Ui.tr("Prateleira", "Shelf");
+                about = Ui.tr("OK põe ou tira o app; as setas mudam a posição.", "OK adds or removes the app; the arrows move it.");
+                icon = "apps";
+            }
+            float px = x + 48 * k, py = top + 70 * k;
+            Symbols.draw(getContext(), c, icon, px + 34 * k, py + 10 * k, 64 * k, 0xFFFF4D5E);
+            c.drawText(name, px, py + 120 * k, panelTitle);
+            StaticLayout text = StaticLayout.Builder.obtain(about, 0, about.length(), panelText, Math.round(r - px - 48 * k))
+                    .setLineSpacing(6 * k, 1).build();
+            c.save();
+            c.translate(px, py + 150 * k);
+            text.draw(c);
+            c.restore();
+            if (now != null && !now.isEmpty()) {
+                float ny = py + 190 * k + text.getHeight();
+                c.drawText(Ui.tr("AGORA", "NOW"), px, ny, header);
+                Paint value = Ui.text(Ui.semibold, 30 * k, 0xFFFF4D5E);
+                value.setTextAlign(Paint.Align.LEFT);
+                c.drawText(now, px, ny + 44 * k, value);
+            }
+            drawRecs(c, bottom - 130 * k, px);
+        }
+
+        private String[] masterLabels() {
+            return new String[] {Ui.tr("Aba Continuar (Stremio)", "Continue tab (Stremio)"), Ui.tr("Fileira de categorias", "Category row"),
+                    Ui.tr("Abrir filmes e séries em", "Open movies and shows in"), Ui.tr("Trailers tocam em", "Trailers play in"),
+                    Ui.tr("Trocar o destaque a cada", "Next hero title every"), Ui.tr("Títulos por aba", "Titles per tab"),
+                    Ui.tr("Infantil nas sugestões", "Kids titles in picks"), Ui.tr("Nome na saudação", "Name in the greeting")};
+        }
+
+        private static final String[] TRAILER_APPS = {"", DeepLinks.SMARTTUBE, "com.google.android.youtube.tv"};
+        private static final int[] HERO_EVERY = {8, 15, 30, 0}, PER_TAB = {10, 15, 20};
+
+        private String[] masterValues() {
+            String tp = Prefs.trailerPlayer();
+            int every = Prefs.heroEvery();
+            String name = Prefs.greetName();
+            return new String[] {
+                    Prefs.tabCont() ? Ui.tr("Ligada", "On") : Ui.tr("Desligada", "Off"),
+                    Prefs.tabCat() ? Ui.tr("Ligada", "On") : Ui.tr("Desligada", "Off"),
+                    "page".equals(Prefs.openIn()) ? Ui.tr("Página do título", "Title page") : "Stremio",
+                    tp.equals(DeepLinks.SMARTTUBE) ? "SmartTube" : tp.equals("com.google.android.youtube.tv") ? "YouTube" : Ui.tr("Automático", "Automatic"),
+                    every <= 0 ? Ui.tr("Não trocar", "Never") : every + " s",
+                    String.valueOf(Prefs.perTab()),
+                    Prefs.noKids() ? Ui.tr("Esconder", "Hide") : Ui.tr("Mostrar", "Show"),
+                    name.isEmpty() ? Ui.tr("Bem-vindo", "Welcome") : Ui.tr("Bem-vindo ", "Welcome ") + name};
+        }
+
+        private static int next(int[] all, int now, int dir) {
+            int at = 0;
+            for (int i = 0; i < all.length; i++) if (all[i] == now) at = i;
+            return all[(at + dir + all.length) % all.length];
+        }
+
+        private void adjustMaster(int dir) {
+            Context ctx = getContext();
+            switch (focus) {
+                case 0: Prefs.setTabCont(!Prefs.tabCont()); break;
+                case 1: Prefs.setTabCat(!Prefs.tabCat()); break;
+                case 2: Prefs.setOpenIn("page".equals(Prefs.openIn()) ? "stremio" : "page"); break;
+                case 3: {
+                    int at = java.util.Arrays.asList(TRAILER_APPS).indexOf(Prefs.trailerPlayer());
+                    Prefs.setTrailerPlayer(TRAILER_APPS[(Math.max(0, at) + dir + TRAILER_APPS.length) % TRAILER_APPS.length]);
+                    break;
+                }
+                case 4: Prefs.setHeroEvery(next(HERO_EVERY, Prefs.heroEvery(), dir)); break;
+                case 5: Prefs.setPerTab(next(PER_TAB, Prefs.perTab(), dir)); Recs.get(ctx).clearCategories(); break;
+                case 6: Prefs.setNoKids(!Prefs.noKids()); Recs.get(ctx).clearCategories(); break;
+                default: return;
+            }
+            HomeData.get(ctx).settingsChanged();
+            spoken.focusMoved();
+        }
+
+        private void askGreeting() {
+            EditText field = new EditText(activity);
+            field.setSingleLine(true);
+            field.setText(Prefs.greetName());
+            field.setHint(Ui.tr("Seu nome (vazio = só \"Bem-vindo\")", "Your name (empty = just \"Welcome\")"));
+            new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(Ui.tr("Nome na saudação", "Name in the greeting"))
+                    .setView(field)
+                    .setPositiveButton(Ui.tr("Salvar", "Save"), (d, which) -> {
+                        String v = field.getText().toString().trim();
+                        Prefs.setGreetName(v.length() > 24 ? v.substring(0, 24) : v);
+                        HomeData.get(getContext()).settingsChanged();
+                        invalidate();
+                    })
+                    .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                    .show();
+        }
 
         private String stremioState() {
             String auth = getContext().getSharedPreferences("stremio", Context.MODE_PRIVATE).getString("auth", "");
@@ -450,8 +665,7 @@ public class SettingsActivity extends Activity {
         }
 
         /** Home screen picks: status, and the credit TMDB asks for. */
-        private float drawRecs(Canvas c, float y) {
-            float x = LIST_X * k + 30 * k;
+        private float drawRecs(Canvas c, float y, float x) {
             c.drawText(Ui.tr("RECOMENDAÇÕES", "RECOMMENDATIONS"), x, y, header);
             String line;
             String error = recs.optString("error");
@@ -461,7 +675,7 @@ public class SettingsActivity extends Activity {
             else if (count > 0) line = Ui.tr("Ligadas · " + count + " títulos nos apps da TV, 3 novos a cada hora.",
                     "On · " + count + " titles from the TV's apps, 3 new ones every hour.");
             else line = Ui.tr("Buscando os títulos…", "Fetching titles…");
-            c.drawText(TextUtils.ellipsize(line, notice, 790 * k, TextUtils.TruncateAt.END).toString(), x, y + 42 * k, notice);
+            c.drawText(TextUtils.ellipsize(line, notice, (PANEL_R - PANEL_X - 96) * k, TextUtils.TruncateAt.END).toString(), x, y + 42 * k, notice);
             version.setTextAlign(Paint.Align.LEFT);
             c.drawText(Ui.tr("Usa a API do TMDB, sem endosso ou certificação do TMDB.",
                     "This product uses the TMDB API but is not endorsed or certified by TMDB."), x, y + 78 * k, version);
@@ -533,7 +747,7 @@ public class SettingsActivity extends Activity {
                     } else if (down && screen == SHELF_EDIT) {
                         moveShelfApp(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
-                    } else if (down && screen == HOME_SETTINGS) {
+                    } else if (down && (screen == HOME_SETTINGS || screen == MASTER)) {
                         adjust(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
                     }
@@ -565,7 +779,7 @@ public class SettingsActivity extends Activity {
                                 focus = pickFor - 1 - keysScroll;
                                 screen = REMOTE_KEYS;
                             } else {
-                                focus = screen == HOME_SETTINGS ? 1 : screen == SHELF_EDIT ? 2 : screen == REMOTE_KEYS ? 3 : 0;
+                                focus = screen == HOME_SETTINGS ? 1 : screen == MASTER ? 8 : screen == SHELF_EDIT ? 2 : screen == REMOTE_KEYS ? 3 : 0;
                                 screen = MAIN;
                             }
                         }
@@ -596,6 +810,7 @@ public class SettingsActivity extends Activity {
         }
 
         private String[] settingLabels() {
+            if (screen == MASTER) return masterLabels();
             List<String> l = new ArrayList<>();
             l.add(Ui.tr("Idioma", "Language"));
             l.add(Ui.tr("Temperatura", "Temperature"));
@@ -612,6 +827,7 @@ public class SettingsActivity extends Activity {
         }
 
         private String[] settingValues() {
+            if (screen == MASTER) return masterValues();
             String[] labels = settingLabels();
             String[] v = new String[labels.length];
             String lang = Prefs.language();
@@ -680,6 +896,10 @@ public class SettingsActivity extends Activity {
 
         /** Changes the focused row's value one step (OK and → go forward, ← goes back). */
         private void adjust(int dir) {
+            if (screen == MASTER) {
+                adjustMaster(dir);
+                return;
+            }
             if (screen == REMOTE_KEYS) {
                 RemoteKeys.Button b = RemoteKeys.buttons(getContext()).get(keysScroll + focus);
                 int n = appPkgs.size();
@@ -882,7 +1102,7 @@ public class SettingsActivity extends Activity {
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(place >= 0 ? 0xF2FFFFFF : 0x80FFFFFF, place >= 0 ? INK : 0x801C1C1E, f));
-                rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
+                rowValue.setColor(blend(0xB3FFFFFF, 0xE6FFFFFF, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(TextUtils.ellipsize(app[1], new TextPaint(rowLabel), 520 * k, TextUtils.TruncateAt.END).toString(), rowRect.left + 30 * k, base, rowLabel);
                 c.drawText(place >= 0 ? "#" + (place + 1) : Ui.tr("Fora", "Off"), rowRect.right - 30 * k, base, rowValue);
@@ -943,15 +1163,16 @@ public class SettingsActivity extends Activity {
             String[] labels = settingLabels();
             String[] values = settingValues();
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
-            c.drawText(Ui.tr("Ajustes do Início", "Home Settings"), LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
+            c.drawText(screen == MASTER ? Ui.tr("Abas e Stremio", "Tabs and Stremio") : Ui.tr("Ajustes do Início", "Home Settings"),
+                    LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             for (int i = 0; i < labels.length; i++) {
                 float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
-                boolean locked = i >= COIN_ROWS && !Prefs.quotes();
-                rowValue.setColor(blend(locked ? 0x59FFFFFF : 0xB3FFFFFF, locked ? 0x591C1C1E : 0xB31C1C1E, f));
-                if (locked) rowLabel.setColor(blend(0x73FFFFFF, 0x731C1C1E, f));
+                boolean locked = screen == HOME_SETTINGS && i >= COIN_ROWS && !Prefs.quotes();
+                rowValue.setColor(blend(locked ? 0x59FFFFFF : 0xB3FFFFFF, locked ? 0x80FFFFFF : 0xE6FFFFFF, f));
+                if (locked) rowLabel.setColor(blend(0x73FFFFFF, 0x99FFFFFF, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(labels[i], rowRect.left + 30 * k, base, rowLabel);
                 c.drawText(values[i], rowRect.right - 30 * k, base, rowValue);
@@ -975,7 +1196,7 @@ public class SettingsActivity extends Activity {
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
-                rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
+                rowValue.setColor(blend(0xB3FFFFFF, 0xE6FFFFFF, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(b.name, rowRect.left + 30 * k, base, rowLabel);
                 String value = TextUtils.ellipsize(describe(RemoteKeys.action(b)), new TextPaint(rowValue), 380 * k, TextUtils.TruncateAt.END).toString();
@@ -1011,6 +1232,13 @@ public class SettingsActivity extends Activity {
                 return;
             } else if (screen == REMOTE_KEYS) {
                 openPicker(keysScroll + focus + 1);
+            } else if (screen == MASTER && focus == GREET_ROW) {
+                askGreeting();
+                return;
+            } else if (screen == MASTER) {
+                adjust(1);
+                invalidate();
+                return;
             } else if (screen == HOME_SETTINGS && focus == CITY_ROW) {
                 askCity();
                 return;
@@ -1051,6 +1279,9 @@ public class SettingsActivity extends Activity {
             } else if (focus == 7) {
                 chooseHomeCategory();
                 return;
+            } else if (focus == 8) {
+                screen = MASTER;
+                focus = 0;
             } else {
                 activity.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             }

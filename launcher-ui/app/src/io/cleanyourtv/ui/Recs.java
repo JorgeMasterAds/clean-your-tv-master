@@ -128,6 +128,9 @@ final class Recs {
         cache = c.getSharedPreferences("recs", Context.MODE_PRIVATE);
         if (cache.getInt("version", 0) != CACHE_VERSION) cache.edit().clear().putInt("version", CACHE_VERSION).apply();
         categoryId = cache.getString("category", "trailers");
+        boolean known = false;
+        for (String[] cat : CATEGORIES) known |= cat[0].equals(categoryId);
+        if (!known) categoryId = "trailers";
         try {
             String saved = cache.getString("picks", null);
             if (saved != null) picks = parse(new JSONArray(saved));
@@ -215,7 +218,7 @@ final class Recs {
             Pick p = list.get((int) ((hour * 3 + i) % list.size()));
             if (seen.add(franchise(p.title))) out.add(p);
         }
-        int cap = 10;   // 10 suggestions per tab
+        int cap = Prefs.perTab();   // 10 suggestions per tab (Settings › Tabs and Stremio)
         return out.size() > cap ? new ArrayList<>(out.subList(0, cap)) : out;
     }
 
@@ -233,31 +236,24 @@ final class Recs {
     static final String[][] CATEGORIES = {
             {"trailers", "Trailers novos", "primary_release_date.gte=@+0&primary_release_date.lte=@+120&vote_count.gte=0", null},
             {"top10", "Top 10 hoje", "trending/all/day", null},
-            {"popular", "Populares da semana", "trending/all/week", null},
-            {"netflix", "Top 10 Netflix", "with_watch_providers=8", "with_watch_providers=8"},
-            {"prime", "Top 10 Prime Video", "with_watch_providers=119", "with_watch_providers=119"},
-            {"disney", "Top 10 Disney+", "with_watch_providers=337", "with_watch_providers=337"},
-            {"max", "Top 10 HBO Max", "with_watch_providers=1899", "with_watch_providers=1899"},
-            {"globoplay", "Top 10 Globoplay", "with_watch_providers=307", "with_watch_providers=307"},
-            {"apple", "Top 10 Apple TV+", "with_watch_providers=350", "with_watch_providers=350"},
+            {"popular", "Em alta na semana", "trending/all/week", null},
+            {"netflix", "Em alta na Netflix", "with_watch_providers=8", "with_watch_providers=8"},
+            {"prime", "Em alta no Prime Video", "with_watch_providers=119", "with_watch_providers=119"},
+            {"disney", "Em alta no Disney+", "with_watch_providers=337", "with_watch_providers=337"},
+            {"max", "Em alta na HBO Max", "with_watch_providers=1899", "with_watch_providers=1899"},
             {"new", "Novidades", "primary_release_date.gte=@-150&vote_count.gte=40", "first_air_date.gte=@-150&vote_count.gte=20"},
             {"rated8", "Nota 8+", "vote_average.gte=8&vote_count.gte=800", "vote_average.gte=8&vote_count.gte=400"},
             {"rated85", "Nota 8,5+", "vote_average.gte=8.5&vote_count.gte=300", "vote_average.gte=8.5&vote_count.gte=200"},
             {"marvel", "Marvel", "with_companies=420", "with_companies=420|38679"},
             {"dc", "DC", "with_companies=128064|9993", "with_companies=128064|9993"},
             {"anime", "Anime", "with_genres=16&with_original_language=ja", "with_genres=16&with_original_language=ja"},
-            {"action", "Ação", "with_genres=28", "with_genres=10759"},
-            {"comedy", "Comédia", "with_genres=35", "with_genres=35"},
-            {"horror", "Terror", "with_genres=27", null},
-            {"scifi", "Ficção científica", "with_genres=878", "with_genres=10765"},
-            {"thriller", "Suspense", "with_genres=53", "with_genres=9648"},
-            {"crime", "Crime", "with_genres=80", "with_genres=80"},
-            {"drama", "Drama", "with_genres=18", "with_genres=18"},
-            {"romance", "Romance", "with_genres=10749", null},
-            {"docs", "Documentários", "with_genres=99", "with_genres=99"},
-            {"korea", "Séries coreanas", null, "with_origin_country=KR"},
-            {"brazil", "Nacionais", "with_origin_country=BR", "with_origin_country=BR"},
     };
+
+    /** Position of the current category in the list (0 when the saved one is gone). */
+    static int categoryIndex() {
+        for (int i = 0; i < CATEGORIES.length; i++) if (CATEGORIES[i][0].equals(categoryId)) return i;
+        return 0;
+    }
     private static volatile String categoryId = "trailers";
     private final Map<String, List<Pick>> categoryPicks = new HashMap<>();
     private final Map<String, Long> categoryAt = new HashMap<>();
@@ -270,6 +266,12 @@ final class Recs {
     static String categoryLabel() {
         for (String[] c : CATEGORIES) if (c[0].equals(categoryId)) return c[1];
         return CATEGORIES[0][1];
+    }
+
+    /** Settings that change what a category holds (titles per tab, kids): every list is fetched again. */
+    void clearCategories() {
+        synchronized (categoryPicks) { categoryAt.clear(); }
+        notifyListeners();
     }
 
     void setCategory(String id) {
@@ -331,7 +333,7 @@ final class Recs {
                     q = q.replace("@-150", day(-150)).replace("@+0", day(0)).replace("@+120", day(120));
                     String url = "/discover/" + kind + "?language=" + lang() + "&watch_region=" + region + "&include_adult=false&sort_by=popularity.desc"
                             + (q.contains("vote_count") ? "" : "&vote_count.gte=" + (kind.equals("movie") ? 150 : 60))
-                            + (anime ? "&without_genres=10751,10762" : "&without_genres=16,10751,10762,10763,10764,10767")
+                            + (!Prefs.noKids() ? "&without_genres=10763,10764,10767" : anime ? "&without_genres=10751,10762" : "&without_genres=16,10751,10762,10763,10764,10767")
                             + (trailers ? "" : kind.equals("movie") ? "&primary_release_date.gte=2015-01-01" : "&first_air_date.gte=2018-01-01")
                             + "&" + q.replace("|", "%7C");
                     JSONArray r = get(url).getJSONArray("results");
@@ -345,13 +347,13 @@ final class Recs {
             List<Pick> out = new ArrayList<>();
             java.util.Set<String> seen = new java.util.HashSet<>();
             for (int i : order) {
-                if (out.size() >= 10) break;
+                if (out.size() >= Prefs.perTab()) break;
                 JSONObject o = found.get(i);
                 JSONArray g = o.optJSONArray("genre_ids");
                 boolean kids = false;
                 for (int j = 0; g != null && j < g.length(); j++) {
                     int gi = g.optInt(j);
-                    kids |= gi == 10751 || gi == 10762 || (gi == 16 && !anime);
+                    kids |= Prefs.noKids() && (gi == 10751 || gi == 10762 || (gi == 16 && !anime));
                 }
                 if (kids) continue;
                 List<Pick> one = new ArrayList<>();

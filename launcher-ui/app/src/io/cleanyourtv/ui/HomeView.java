@@ -108,7 +108,77 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final String[] TAB_KIND = {null, "cont", "movie", "tv", "cat"};
     /** Tabs: Explore, Continue (Stremio), Movies, Shows and the category picked in the selector. */
     private static final int NT = 5, CAT_TAB = 4;
-    private static final int Z_TOP = 4, Z_CARDS = 5;
+
+    /** Continue and Categories can be turned off in Settings › Tabs and Stremio. */
+    private static boolean tabOn(int i) {
+        return i == 1 ? Prefs.tabCont() : i == CAT_TAB ? Prefs.tabCat() : true;
+    }
+
+    /** In the tab bar: the categories have their own row under it, so their tab is never drawn there. */
+    private static boolean tabShown(int i) {
+        return i != CAT_TAB && tabOn(i);
+    }
+
+    private boolean chipsOn() {
+        return picksOn() && Prefs.tabCat();
+    }
+
+    /** Moves to the next (1) or previous (-1) category: past the end of a list, the row goes on to the next one. */
+    private void nextCategory(int d) {
+        int n = Recs.CATEGORIES.length, at = Math.floorMod(Recs.categoryIndex() + d, n);
+        showCategory(at);
+        cardIndex = d > 0 ? 0 : Math.max(0, cards.size() - 1);
+    }
+
+    private void showCategory(int at) {
+        recs.setCategory(Recs.CATEGORIES[at][0]);
+        chipIndex = at;
+        tab = -1;
+        selectTab(CAT_TAB);
+        recs.category(Recs.CATEGORIES[(at + 1) % Recs.CATEGORIES.length][0]);   // the next list gets ready
+        heroDirty = true;
+    }
+
+    /**
+     * The category selector under the tabs: one pill, "‹ Top 10 hoje ›", with "2 de 13" beside it. ← → on it walk
+     * the lists (round at the ends); focused it turns white, showing its list it turns red.
+     */
+    private void drawChips(Canvas c) {
+        if (!chipsOn()) return;
+        if (chipText == null) {
+            chipText = Ui.text(Ui.semibold, 27 * k, 0xF2FFFFFF);
+            chipTextOn = Ui.text(Ui.semibold, 27 * k, 0xFF111111);
+            chipFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        }
+        String[][] all = Recs.CATEGORIES;
+        int at = Recs.categoryIndex();
+        boolean focus = zone == Z_CHIPS && !sheetOpen, showing = tab == CAT_TAB;
+        String name = all[at][1];
+        float pad = 30 * k, arrow = 34 * k, top = CHIP_TOP * k, h = CHIP_H * k;
+        float wdt = chipText.measureText(name) + 2 * pad + 2 * arrow;
+        float x = Ui.he ? CONTENT_R * k - wdt : MARGIN * k;
+        chipRect.set(x, top, x + wdt, top + h);
+        if (focus) chipRect.inset(-5 * k, -4 * k);
+        chipFill.setColor(focus ? 0xFFFFFFFF : showing ? 0xFFD3122C : 0x40FFFFFF);
+        c.drawRoundRect(chipRect, chipRect.height() / 2, chipRect.height() / 2, chipFill);
+        Paint p = focus ? chipTextOn : chipText;
+        float base = chipRect.centerY() + Ui.halfCap(p);
+        c.drawText("‹", chipRect.left + pad, base, p);
+        c.drawText("›", chipRect.right - pad - p.measureText("›"), base, p);
+        c.drawText(name, chipRect.centerX() - p.measureText(name) / 2, base, p);
+        // Where it is in the list.
+        String count = (at + 1) + Ui.tr(" de ", " of ") + all.length;
+        chipText.setAlpha(170);
+        c.drawText(count, chipRect.right + 22 * k, base, chipText);
+        chipText.setAlpha(242);
+    }
+    private static final int Z_TOP = 4, Z_CARDS = 5, Z_CHIPS = 6;
+    // The category row under the tabs (Trailers, Top 10, Marvel...): focusing a pill shows that list.
+    private static final float CHIP_TOP = 248, CHIP_H = 54, CHIP_GAP = 14;
+    private int chipIndex;
+    private float chipShift;     // how far the row is scrolled so the focused pill stays on screen
+    private final RectF chipRect = new RectF();
+    private Paint chipText, chipTextOn, chipFill;
 
     private final Activity activity;
     private final Scene scene = new Scene();
@@ -321,7 +391,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             scene.setOffset(0, kind == DRAWER || kind == STATUS ? 0 : getTranslationY());
             switch (kind) {
                 case SKY: drawSky(c); break;
-                case HERO: drawLightTop(c); break;
+                case HERO: drawLightTop(c); drawChips(c); break;
                 case STATUS: drawLightButtons(c); break;
                 case PLATTER: drawPlatter(c); break;
                 case TILES: drawTiles(c); break;
@@ -491,32 +561,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private String[] tabs() {
         String[] b = Ui.he ? TABS_HE : Ui.ru ? TABS_RU : Ui.es ? TABS_ES : Ui.de ? TABS_DE : Ui.fr ? TABS_FR : Ui.tur ? TABS_TR : Ui.en ? TABS_EN : TABS;
-        return new String[] {b[0], Ui.tr("Continuar", "Continue"), b[1], b[2], Recs.categoryLabel() + " ▾"};
-    }
-
-    /** The category selector (the last tab): a list like Stremio's, the choice is kept and fills that tab. */
-    private void chooseCategory() {
-        String[][] all = Recs.CATEGORIES;
-        String[] names = new String[all.length];
-        int at = 0;
-        for (int i = 0; i < all.length; i++) {
-            names[i] = all[i][1];
-            if (all[i][0].equals(Recs.category())) at = i;
-        }
-        click.open();
-        new android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle(Ui.tr("Categorias", "Categories"))
-                .setSingleChoiceItems(names, at, (d, which) -> {
-                    d.dismiss();
-                    recs.setCategory(all[which][0]);
-                    layoutLight();
-                    tab = -1;   // re-enter the tab with the new list
-                    selectTab(CAT_TAB);
-                    topIndex = CAT_TAB;
-                    retarget(false);
-                    wake();
-                })
-                .show();
+        return new String[] {b[0], Ui.tr("Continuar", "Continue"), b[1], b[2], Recs.categoryLabel()};
     }
 
     @Override public void onData() {
@@ -524,6 +569,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         updatePalette();
         checkNight(true);
         layoutStatus();
+        layoutLight();      // tabs turned on or off in Settings
+        updatePicks();
         heroDirty = statusDirty = drawerDirty = true;
         platter.invalidate();
     }
@@ -2029,14 +2076,19 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         @Override public void run() {
             postDelayed(this, 2000);
             if (!picksOn() || cards.isEmpty() || sheetOpen || zone == Z_DRAWER || zone == Z_TOP) return;
-            if (SystemClock.uptimeMillis() - lastKeyAt < 8000) return;
+            int every = Prefs.heroEvery();   // Settings › Tabs and Stremio (0 = the hero stays put)
+            if (every <= 0 || SystemClock.uptimeMillis() - lastKeyAt < every * 1000L) return;
             lastKeyAt = SystemClock.uptimeMillis();
             if (cardIndex < cards.size() - 1) {
                 cardIndex++;
             } else {
-                page = page + 1 < tabFirst[tab + 1] ? page + 1 : tabFirst[tab];
-                cardIndex = 0;
-                updateCards();
+                if (tab == CAT_TAB && chipsOn() && page + 1 >= tabFirst[tab + 1]) {
+                    nextCategory(1);    // the list is over: the next category, not the same one again
+                } else {
+                    page = page + 1 < tabFirst[tab + 1] ? page + 1 : tabFirst[tab];
+                    cardIndex = 0;
+                    updateCards();
+                }
             }
             heroFollow();
             wake();
@@ -2256,6 +2308,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (others.isEmpty()) return;
             it = others.get(gridIndex);
             r = focusedCell;
+        } else if (zone == Z_CHIPS) {
+            if (cards.isEmpty()) return;
+            zone = Z_CARDS;
+            cardIndex = 0;
+            retarget(false);
+            return;
         } else if (zone == Z_HERO) {
             Recs.Pick p = currentPick();
             if (p == null) return;
@@ -2272,7 +2330,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             r = drawerRects[drawerIndex];
         } else if (zone == Z_TOP) {
             if (topIndex < NT) {
-                if (topIndex == CAT_TAB) chooseCategory(); else selectTab(topIndex);
+                selectTab(topIndex);
                 return;
             }
             it = lightButtons.get(topIndex - NT);
@@ -2764,6 +2822,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float pad = 26 * k, tabTop = L_TABBAR_TOP * k, tabBottom = (L_TABBAR_TOP + L_TABBAR_H) * k;
         float x = MARGIN * k - pad;
         for (int i = 0; i < NT; i++) {
+            if (!tabShown(i)) {
+                topRects[i].set(x, tabTop, x, tabBottom);
+                continue;
+            }
             float tw = Math.max(lTabOn.measureText(tabs()[i]), lTab.measureText(tabs()[i]));
             topRects[i].set(x, tabTop, x + tw + 2 * pad, tabBottom);
             x = topRects[i].right + 4 * k;
@@ -2795,9 +2857,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** The three cards of the current page and the background from the first one; the pages around it get ready. */
     private void updateCards() {
         // Where we are in the tab: a new list (every hour, or details that drop a pick) keeps the tab and the page.
+        if (!tabOn(tab)) {   // the tab was turned off in Settings
+            tab = 0;
+            page = 0;
+        }
         int inTab = Math.max(0, page - tabFirst[tab]);
         for (int t = 0; t < NT; t++) {
-            tabPicks[t] = recs.all(TAB_KIND[t]);
+            tabPicks[t] = tabOn(t) ? recs.all(TAB_KIND[t]) : new ArrayList<>();
             int pages = tabPicks[t].isEmpty() ? 0 : (tabPicks[t].size() + 2) / 3;
             tabFirst[t + 1] = tabFirst[t] + pages;
         }
@@ -2934,13 +3000,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (HomeData.coinCount() > 0) drawQuotes(c);
             return;
         }
-        String hello = "Bem-vindo Master";
+        String name = Prefs.greetName();
+        String hello = name.isEmpty() ? Ui.tr("Bem-vindo", "Welcome") : Ui.tr("Bem-vindo ", "Welcome ") + name;
         float helloX = Ui.he ? CONTENT_R * k - lTitle.measureText(hello) : MARGIN * k - Ui.leftBearing(lTitle, hello);
         c.drawText(hello, helloX, L_TITLE_BASE * k, lTitle);
         // Text tabs (the selected one in bold, in the main text color); with focus on the tabs, the selected one gets
         // the white pill with a shadow and grows a little (the tvOS focus).
         float focus = Ui.clamp(topFocus[tab].value);
         for (int i = 0; i < NT; i++) {
+            if (!tabShown(i)) continue;
             RectF r = topRects[i];
             if (i == tab && focus > 0.01f) {
                 float s = 1 + 0.05f * focus;
@@ -3183,12 +3251,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             RectF r = topRects[NT + i];
             float f = Ui.clamp(topFocus[NT + i].value), s = 1 + 0.1f * f, rad = r.width() / 2 * s;
             cell.set(r.centerX() - rad, r.centerY() - rad, r.centerX() + rad, r.centerY() + rad);
-            tmp.set(cell);
-            tmp.offset(0, (6 + 8 * f) * k);
-            shadow.setColor(Ui.alpha(0xFF000000, tone(0.1f, 0.3f) + tone(0.14f, 0.2f) * f));
-            shadows.draw(c, tmp, rad, SHADOW_BLUR * k, shadow);
-            scene.liquid(c, cell, rad, tone(0xFFFFFFFF, SMOKE), tone(0.55f, 0.5f), tone(0.02f, 0.01f), 12 * k, 8 * k,
-                    tone(0.6f, 0.45f), 1 - f);
+            // Full-screen Home: just the icon, no glass circle or border (like the inputs and shortcuts row); the
+            // white circle comes only with the focus.
+            if (!picksOn()) {
+                tmp.set(cell);
+                tmp.offset(0, (6 + 8 * f) * k);
+                shadow.setColor(Ui.alpha(0xFF000000, tone(0.1f, 0.3f) + tone(0.14f, 0.2f) * f));
+                shadows.draw(c, tmp, rad, SHADOW_BLUR * k, shadow);
+                scene.liquid(c, cell, rad, tone(0xFFFFFFFF, SMOKE), tone(0.55f, 0.5f), tone(0.02f, 0.01f), 12 * k, 8 * k,
+                        tone(0.6f, 0.45f), 1 - f);
+            }
             if (f > 0.01f) {
                 fill.setShader(null);
                 fill.setColor(Ui.alpha(0xFFFFFFFF, f));
@@ -3220,7 +3292,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 break;
             case Z_CARDS:
                 if (Ui.he) dx = -dx;   // mirrored cards (layoutLight): ← goes on to the next card, further left
-                if (dx > 0 && cardIndex == cards.size() - 1 && tabFirst[NT] > 1) {
+                boolean catEnd = tab == CAT_TAB && chipsOn() && page + 1 >= tabFirst[CAT_TAB + 1];
+                boolean catStart = tab == CAT_TAB && chipsOn() && page <= tabFirst[CAT_TAB];
+                if (dx > 0 && cardIndex == cards.size() - 1 && catEnd) {
+                    nextCategory(1);
+                } else if (dx < 0 && cardIndex == 0 && catStart) {
+                    nextCategory(-1);
+                } else if (dx > 0 && cardIndex == cards.size() - 1 && tabFirst[NT] > 1) {
                     turnPage(1);
                     cardIndex = 0;
                 } else if (dx < 0 && cardIndex == 0 && tabFirst[NT] > 1) {
@@ -3230,9 +3308,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     int next = Math.max(0, Math.min(cards.size() - 1, cardIndex + dx));
                     if (next == cardIndex) return true;
                     cardIndex = next;
+                } else if (dy < 0 && chipsOn() && tab == CAT_TAB) {
+                    zone = Z_CHIPS;
+                    chipIndex = Recs.categoryIndex();
                 } else if (dy < 0) {
                     zone = Z_TOP;
-                    topIndex = tab;     // as on Apple TV: moving up to the tabs focuses the selected tab
+                    topIndex = tab == CAT_TAB ? 0 : tab;     // as on Apple TV: moving up to the tabs focuses the selected tab
                     updateCards();      // ready the other tabs' first pages
                 } else {
                     zone = Z_SHELF;
@@ -3240,13 +3321,34 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 }
                 heroFollow();
                 break;
+            case Z_CHIPS:
+                if (dx != 0) {
+                    showCategory(Math.floorMod(Recs.categoryIndex() + (Ui.he ? -dx : dx), Recs.CATEGORIES.length));
+                } else if (dy < 0) {
+                    zone = Z_TOP;
+                    topIndex = 0;
+                } else if (cards.isEmpty()) {
+                    zone = Z_SHELF;
+                } else {
+                    zone = Z_CARDS;
+                    cardIndex = 0;
+                    updateCards();
+                }
+                heroDirty = true;
+                break;
             case Z_TOP:
                 if (dx != 0) {
                     // Mirrored for Hebrew (layoutLight): ← moves on to the next item, which sits further left.
-                    int next = Math.max(picksOn() ? 0 : NT, Math.min(NT + 2, topIndex + (Ui.he ? -dx : dx)));
+                    int step = Ui.he ? -dx : dx, next = topIndex + step;
+                    while (next >= 0 && next < NT && !tabShown(next)) next += step;   // turned-off tabs are skipped
+                    next = Math.max(picksOn() ? 0 : NT, Math.min(NT + 2, next));
                     if (next == topIndex) return true;
                     topIndex = next;
                     if (topIndex < NT) selectTab(topIndex);   // like Apple TV tabs: focusing a tab selects it
+                } else if (dy > 0 && topIndex < NT && chipsOn()) {
+                    zone = Z_CHIPS;
+                    chipIndex = Recs.categoryIndex();
+                    if (tab != CAT_TAB) showCategory(chipIndex);   // like a tab: focusing the row shows its list
                 } else if (dy > 0) {
                     if (cards.isEmpty()) {
                         zone = Z_SHELF;

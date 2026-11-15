@@ -94,7 +94,7 @@ final class DeepLinks {
      * or the title's own page here when Stremio is missing or TMDB has no IMDb id.
      */
     static void openTitle(Context c, String kind, int id) {
-        if (!Providers.installed(c, STREMIO)) {
+        if (!Providers.installed(c, STREMIO) || "page".equals(Prefs.openIn())) {
             DetailActivity.open(c, kind, id);
             return;
         }
@@ -116,7 +116,8 @@ final class DeepLinks {
     static void openPick(Context c, Recs.Pick p) {
         if (p.trailer != null) {   // a trailer: SmartTube, else any YouTube app
             String url = "https://www.youtube.com/watch?v=" + p.trailer;
-            if (open(c, SMARTTUBE, url) || open(c, "com.google.android.youtube.tv", url)) return;
+            String player = Prefs.trailerPlayer();
+            if ((!player.isEmpty() && open(c, player, url)) || open(c, SMARTTUBE, url) || open(c, "com.google.android.youtube.tv", url)) return;
         }
         if (p.cont && p.imdb != null && p.imdb.startsWith("tt")) {
             boolean movie = "movie".equals(p.kind);

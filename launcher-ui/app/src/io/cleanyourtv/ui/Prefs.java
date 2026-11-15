@@ -240,6 +240,25 @@ final class Prefs {
     // MARK: - Trailer player
 
     /** The app the Trailer button opens, or "" for the built-in pick (YouTube, then another YouTube-capable player). */
+    // MARK: - Clean Your TV Master: tabs, where titles open, the hero, the greeting
+
+    static boolean tabCont() { return sp().getBoolean("tabCont", true); }
+    static void setTabCont(boolean on) { put("tabCont", on); }
+    static boolean tabCat() { return sp().getBoolean("tabCat", true); }
+    static void setTabCat(boolean on) { put("tabCat", on); }
+    /** "stremio" (the title's page in Stremio) or "page" (this app's own title page). */
+    static String openIn() { return sp().getString("openIn", "stremio"); }
+    static void setOpenIn(String v) { put("openIn", v); }
+    /** Seconds between hero titles; 0 = it stays put. */
+    static int heroEvery() { return sp().getInt("heroEvery", 8); }
+    static void setHeroEvery(int s) { sp().edit().putInt("heroEvery", s).apply(); version++; }
+    static int perTab() { return sp().getInt("perTab", 10); }
+    static void setPerTab(int n) { sp().edit().putInt("perTab", n).apply(); version++; }
+    static String greetName() { return sp().getString("greetName", "Master"); }
+    static void setGreetName(String v) { put("greetName", v == null ? "" : v.trim()); }
+    static boolean noKids() { return sp().getBoolean("noKids", true); }
+    static void setNoKids(boolean on) { put("noKids", on); }
+
     static String trailerPlayer() { return sp().getString("trailerPlayer", ""); }
     static void setTrailerPlayer(String pkg) { put("trailerPlayer", pkg == null ? "" : pkg); }
 
