@@ -194,12 +194,12 @@ public class SettingsActivity extends Activity {
         private String rowText(int row) {
             switch (screen) {
                 case MAIN: {
-                    String[] names = {Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview") + ", " + styleName(Prefs.screensaverStyle()),
-                            Ui.tr("Ajustes do Início", "Home Settings"),
-                            Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Serviços", "Services"),
+                    String[] names = {Ui.tr("Protetor de tela, ver agora", "Screensaver, preview") + ", " + styleName(Prefs.screensaverStyle()),
+                            Ui.tr("Aparência e clima", "Home Settings"),
+                            Ui.tr("Apps do dock", "Shelf"), Ui.tr("Atalhos do controle", "Remote Buttons"), Ui.tr("Meus streamings", "Services"),
                             Ui.tr("Conta TMDB, ", "TMDB account, ") + account(), Ui.tr("Conta Stremio, ", "Stremio account, ") + stremioState(),
-                            Ui.tr("Categoria da Início, ", "Home category, ") + Recs.categoryLabel(), Ui.tr("Abas e Stremio", "Tabs and Stremio"),
-                            Ui.tr("Ajustes da TV", "TV Settings")};
+                            Ui.tr("Categoria inicial, ", "Home category, ") + Recs.categoryLabel(), Ui.tr("Abas e reprodução", "Tabs and Stremio"),
+                            Ui.tr("Configurações do Android", "TV Settings")};
                     return row < names.length ? names[row] : "";
                 }
                 case MASTER:
@@ -334,11 +334,11 @@ public class SettingsActivity extends Activity {
         }
 
         private void drawMain(Canvas c) {
-            String[] labels = {Ui.tr("Tela de Descanso", "Screensaver"), Ui.tr("Ajustes do Início", "Home Settings"),
-                    Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Serviços", "Services"),
+            String[] labels = {Ui.tr("Protetor de tela", "Screensaver"), Ui.tr("Aparência e clima", "Home Settings"),
+                    Ui.tr("Apps do dock", "Shelf"), Ui.tr("Atalhos do controle", "Remote Buttons"), Ui.tr("Meus streamings", "Services"),
                     Ui.tr("Conta TMDB", "TMDB account"), Ui.tr("Conta Stremio", "Stremio account"),
-                    Ui.tr("Categoria da Início", "Home category"), Ui.tr("Abas e Stremio", "Tabs and Stremio"),
-                    Ui.tr("Ajustes da TV", "TV Settings")};
+                    Ui.tr("Categoria inicial", "Home category"), Ui.tr("Abas e reprodução", "Tabs and Stremio"),
+                    Ui.tr("Configurações do Android", "TV Settings")};
             for (int i = 0; i < labels.length; i++) {
                 float y = (LIST_TOP + i * (ROW_H + ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
@@ -427,16 +427,16 @@ public class SettingsActivity extends Activity {
 
         private String[] mainInfo(int i) {
             switch (i) {
-                case 0: return new String[] {Ui.tr("Tela de Descanso", "Screensaver"), Ui.tr("O que aparece quando a TV fica parada. As setas trocam o estilo, OK mostra agora.", "What shows when the TV sits idle. The arrows change the style, OK shows it now."), styleName(Prefs.screensaverStyle())};
-                case 1: return new String[] {Ui.tr("Ajustes do Início", "Home Settings"), Ui.tr("Idioma, temperatura, tema, relógio, clima, cidade e cotações.", "Language, temperature, theme, clock, weather, city and quotes."), ""};
-                case 2: return new String[] {Ui.tr("Prateleira", "Shelf"), Ui.tr("Quais apps aparecem na fileira da Início e em que ordem.", "Which apps sit on the Home row, and in what order."), ""};
-                case 3: return new String[] {Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Troque o que cada botão do controle abre: um app, uma entrada HDMI ou uma função. Vale de dentro de qualquer app.", "Change what each remote button opens: an app, an HDMI input or a function, from inside any app."), RemoteKeys.remoteName(getContext())};
-                case 4: return new String[] {Ui.tr("Serviços", "Services"), Ui.tr("Os streamings que você assina e o app que toca os trailers.", "The streaming services you pay for, and the app that plays trailers."), ""};
+                case 0: return new String[] {Ui.tr("Protetor de tela", "Screensaver"), Ui.tr("O que aparece quando a TV fica parada. As setas trocam o estilo, OK mostra agora.", "What shows when the TV sits idle. The arrows change the style, OK shows it now."), styleName(Prefs.screensaverStyle())};
+                case 1: return new String[] {Ui.tr("Aparência e clima", "Home Settings"), Ui.tr("Idioma, temperatura, tema, relógio, clima, cidade e cotações.", "Language, temperature, theme, clock, weather, city and quotes."), ""};
+                case 2: return new String[] {Ui.tr("Apps do dock", "Shelf"), Ui.tr("Quais apps aparecem na fileira da Início e em que ordem.", "Which apps sit on the Home row, and in what order."), ""};
+                case 3: return new String[] {Ui.tr("Atalhos do controle", "Remote Buttons"), Ui.tr("Troque o que cada botão do controle abre: um app, uma entrada HDMI ou uma função. Vale de dentro de qualquer app.", "Change what each remote button opens: an app, an HDMI input or a function, from inside any app."), RemoteKeys.remoteName(getContext())};
+                case 4: return new String[] {Ui.tr("Meus streamings", "Services"), Ui.tr("Os streamings que você assina e o app que toca os trailers.", "The streaming services you pay for, and the app that plays trailers."), ""};
                 case 5: return new String[] {Ui.tr("Conta TMDB", "TMDB account"), Ui.tr("A chave grátis do TMDB traz as fotos, as sugestões, as categorias e os trailers.", "The free TMDB key brings the photos, picks, categories and trailers."), account()};
                 case 6: return new String[] {Ui.tr("Conta Stremio", "Stremio account"), Ui.tr("Liga a aba Continuar: o que você estava vendo no Stremio, com a barra de onde parou. Sem senha na TV: aparece um código para abrir no celular.", "Turns on the Continue tab: what you were watching in Stremio, with where you stopped. No password on the TV: a code to open on your phone."), stremioState()};
-                case 7: return new String[] {Ui.tr("Categoria da Início", "Home category"), Ui.tr("A lista que a fileira de categorias mostra primeiro. Na Início, é só andar pela fileira abaixo das abas.", "The list the category row shows first. On Home, just walk along the row under the tabs."), Recs.categoryLabel()};
-                case 8: return new String[] {Ui.tr("Abas e Stremio", "Tabs and Stremio"), Ui.tr("Ligue ou desligue as abas, escolha onde os títulos abrem, o app dos trailers, a troca do destaque, quantos títulos por aba, infantil e a saudação.", "Turn tabs on or off, pick where titles open, the trailer app, the hero timing, titles per tab, kids titles and the greeting."), ""};
-                default: return new String[] {Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("As configurações do Android TV: rede, som, imagem e apps.", "Android TV's own settings: network, sound, picture and apps."), ""};
+                case 7: return new String[] {Ui.tr("Categoria inicial", "Home category"), Ui.tr("A lista que a fileira de categorias mostra primeiro. Na Início, é só andar pela fileira abaixo das abas.", "The list the category row shows first. On Home, just walk along the row under the tabs."), Recs.categoryLabel()};
+                case 8: return new String[] {Ui.tr("Abas e reprodução", "Tabs and Stremio"), Ui.tr("Ligue ou desligue as abas, escolha onde os títulos abrem, o app dos trailers, a troca do destaque, quantos títulos por aba, infantil e a saudação.", "Turn tabs on or off, pick where titles open, the trailer app, the hero timing, titles per tab, kids titles and the greeting."), ""};
+                default: return new String[] {Ui.tr("Configurações do Android", "TV Settings"), Ui.tr("As configurações do Android TV: rede, som, imagem e apps.", "Android TV's own settings: network, sound, picture and apps."), ""};
             }
         }
 
@@ -483,15 +483,15 @@ public class SettingsActivity extends Activity {
                 now = values[i];
                 icon = "play";
             } else if (screen == HOME_SETTINGS) {
-                name = Ui.tr("Ajustes do Início", "Home Settings");
+                name = Ui.tr("Aparência e clima", "Home Settings");
                 about = Ui.tr("OK ou as setas mudam o valor.", "OK or the arrows change the value.");
                 icon = "home";
             } else if (screen == REMOTE_KEYS || screen == PICKER) {
-                name = Ui.tr("Botões do Controle", "Remote Buttons");
+                name = Ui.tr("Atalhos do controle", "Remote Buttons");
                 about = Ui.tr("Escolha o botão e o que ele abre. Os outros continuam como sempre.", "Pick a button and what it opens. The rest work as always.");
                 icon = "tune";
             } else {
-                name = Ui.tr("Prateleira", "Shelf");
+                name = Ui.tr("Apps do dock", "Shelf");
                 about = Ui.tr("OK põe ou tira o app; as setas mudam a posição.", "OK adds or removes the app; the arrows move it.");
                 icon = "apps";
             }
@@ -604,7 +604,7 @@ public class SettingsActivity extends Activity {
                 if (all[i][0].equals(Recs.category())) at = i;
             }
             new android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                    .setTitle(Ui.tr("Categoria da Início", "Home category"))
+                    .setTitle(Ui.tr("Categoria inicial", "Home category"))
                     .setSingleChoiceItems(names, at, (d, which) -> {
                         d.dismiss();
                         Recs.get(getContext()).setCategory(all[which][0]);
@@ -824,11 +824,6 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Formato do relógio", "Clock format"));
             l.add(Ui.tr("Widget do clima", "Weather widget"));
             l.add(Ui.tr("Cidade", "City"));
-            l.add(Ui.tr("Widget de cotações", "Quotes widget"));
-            l.add("Bitcoin");
-            l.add("Ethereum");
-            l.add("Solana");
-            if (dollar()) l.add(Ui.tr("Dólar", "Dollar"));
             return l.toArray(new String[0]);
         }
 
@@ -849,9 +844,6 @@ public class SettingsActivity extends Activity {
                     : Ui.tr("Automático", "Automatic");
             v[WEATHER_ROW] = onOff(Prefs.weather());
             v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
-            v[QUOTES_ROW] = onOff(Prefs.quotes());
-            // No quotes widget, nowhere to show prices: the coins read as off (and stay locked) until it is back on.
-            for (int i = COIN_ROWS; i < v.length; i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
             return v;
         }
 
@@ -1099,7 +1091,7 @@ public class SettingsActivity extends Activity {
 
         private void drawShelfEditor(Canvas c) {
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
-            c.drawText(Ui.tr("Prateleira", "Shelf"), LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
+            c.drawText(Ui.tr("Apps do dock", "Shelf"), LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             int rows = rowCount();
             for (int i = 0; i < rows; i++) {
                 String[] app = shelfRows.get(pickScroll + i);
@@ -1107,7 +1099,7 @@ public class SettingsActivity extends Activity {
                 float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
-                rowLabel.setColor(blend(place >= 0 ? 0xF2FFFFFF : 0x80FFFFFF, place >= 0 ? INK : 0x801C1C1E, f));
+                rowLabel.setColor(blend(place >= 0 ? 0xF2FFFFFF : 0x80FFFFFF, place >= 0 ? INK : 0xCCFFFFFF, f));
                 rowValue.setColor(blend(0xB3FFFFFF, 0xE6FFFFFF, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(TextUtils.ellipsize(app[1], new TextPaint(rowLabel), 520 * k, TextUtils.TruncateAt.END).toString(), rowRect.left + 30 * k, base, rowLabel);
@@ -1115,7 +1107,7 @@ public class SettingsActivity extends Activity {
             }
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
             float hy = (LIST_TOP + 20 + rows * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
-            c.drawText(Ui.tr("OK põe ou tira (até " + HomeApps.MAX_SHELF + "). ← → mudam a ordem. Menu (≡) ou segurar OK na Home: logo e cor.",
+            c.drawText(Ui.tr("OK fixa ou tira do dock (até " + HomeApps.MAX_SHELF + "). ← → mudam a ordem.",
                     "OK adds or removes (up to " + HomeApps.MAX_SHELF + "). ← → change the order.",
                     "OK pone o quita del estante (hasta " + HomeApps.MAX_SHELF + "). ← → cambian el orden."), LIST_X * k + 30 * k, hy, hint);
         }
@@ -1169,7 +1161,7 @@ public class SettingsActivity extends Activity {
             String[] labels = settingLabels();
             String[] values = settingValues();
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
-            c.drawText(screen == MASTER ? Ui.tr("Abas e Stremio", "Tabs and Stremio") : Ui.tr("Ajustes do Início", "Home Settings"),
+            c.drawText(screen == MASTER ? Ui.tr("Abas e reprodução", "Tabs and Stremio") : Ui.tr("Aparência e clima", "Home Settings"),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             for (int i = 0; i < labels.length; i++) {
                 float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
@@ -1193,8 +1185,8 @@ public class SettingsActivity extends Activity {
             List<RemoteKeys.Button> keys = RemoteKeys.buttons(getContext());
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
             String remote = RemoteKeys.remoteName(getContext());
-            c.drawText(Ui.tr("Botões do Controle", "Remote Buttons") + (remote.isEmpty() ? "" : "  ·  " + remote),
-                    LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
+            c.drawText(TextUtils.ellipsize(Ui.tr("Atalhos do controle", "Remote Buttons") + (remote.isEmpty() ? "" : "  ·  " + remote),
+                    new TextPaint(heading), (LIST_R - LIST_X - 30) * k, TextUtils.TruncateAt.END).toString(), LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             int rows = rowCount();
             for (int i = 0; i < rows; i++) {
                 RemoteKeys.Button b = keys.get(keysScroll + i);
@@ -1204,17 +1196,20 @@ public class SettingsActivity extends Activity {
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
                 rowValue.setColor(blend(0xB3FFFFFF, 0xE6FFFFFF, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
-                c.drawText(b.name, rowRect.left + 30 * k, base, rowLabel);
                 String value = TextUtils.ellipsize(describe(RemoteKeys.action(b)), new TextPaint(rowValue), 380 * k, TextUtils.TruncateAt.END).toString();
+                // The button's name never runs into what it opens.
+                float room = rowRect.width() - 90 * k - rowValue.measureText(value);
+                c.drawText(TextUtils.ellipsize(b.name, new TextPaint(rowLabel), Math.max(80 * k, room), TextUtils.TruncateAt.END).toString(),
+                        rowRect.left + 30 * k, base, rowLabel);
                 c.drawText(value, rowRect.right - 30 * k, base, rowValue);
             }
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
             float hy = (LIST_TOP + 20 + rows * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
             String line = keys.isEmpty()
-                    ? Ui.tr("Nenhum botão configurável: envie o remote.json do seu modelo (launcher-ui/config.sh --remote).",
+                    ? Ui.tr("Nenhum botão configurável neste controle.",
                             "No configurable buttons: push your model's remote.json (launcher-ui/config.sh --remote).")
                     : (keysScroll + focus + 1) + " / " + keys.size() + "  ·  "
-                            + Ui.tr("OK escolhe o que o botão faz. Os demais funcionam como sempre.",
+                            + Ui.tr("OK escolhe o que o botão abre.",
                             "OK picks what the button does. The rest work as always.");
             c.drawText(line, LIST_X * k + 30 * k, hy, hint);
         }

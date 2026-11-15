@@ -2476,9 +2476,26 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean movable = !sheetOpen && canReorder();
         List<String> labels = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
+        List<String> pinned = dockPkgs();
+        boolean onDock = pinned.contains(it.pkg);
+        if (!onDock) {
+            labels.add(Ui.tr("Fixar no dock", "Pin to the dock"));
+            actions.add(() -> pinToDock(it));
+        }
         if (movable) {
-            labels.add(Ui.tr("Mover", "Move"));
+            labels.add(Ui.tr("Mover no dock", "Move on the dock"));
             actions.add(this::startReorder);
+        }
+        if (onDock) {
+            labels.add(Ui.tr("Tirar do dock", "Unpin from the dock"));
+            actions.add(() -> {
+                List<String> now = dockPkgs();
+                now.remove(it.pkg);
+                Prefs.setShelf(now);
+                shelfIndex = Math.max(0, Math.min(shelfIndex, now.size() - 1));
+                reload();
+                showToast(it.label + Ui.tr(" saiu do dock", " left the dock"));
+            });
         }
         labels.add(Ui.tr("Logo e cor", "Logo and color"));
         actions.add(() -> CustomTiles.edit(activity, it.pkg, it.label, this::reload));
@@ -2500,6 +2517,36 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 Math.round(r.right) + at[0], Math.round(r.bottom) + at[1]);
         click.open();
         TvUi.popover(activity, this, anchor, it.label, labels.toArray(new String[0]), which -> actions.get(which).run(), night < 0.5f);
+    }
+
+    /** The dock's packages, in order (what was saved, or what the dock shows when nothing was saved yet). */
+    private List<String> dockPkgs() {
+        List<String> saved = Prefs.shelf();
+        List<String> out = new ArrayList<>();
+        if (saved != null) {
+            out.addAll(saved);
+        } else {
+            for (HomeApps.Item i : shelf) if (i.kind == HomeApps.APP && i.pkg != null) out.add(i.pkg);
+        }
+        return out;
+    }
+
+    /** "Pin to the dock" from All Apps: the app goes to the end of the dock (up to its limit). */
+    private void pinToDock(HomeApps.Item it) {
+        List<String> now = dockPkgs();
+        if (now.contains(it.pkg)) return;
+        if (now.size() >= HomeApps.MAX_SHELF) {
+            showToast(Ui.tr("O dock já tem " + HomeApps.MAX_SHELF + " apps: tire um antes.", "The dock is full: unpin one first."));
+            return;
+        }
+        now.add(it.pkg);
+        Prefs.setShelf(now);
+        if (sheetOpen) closeSheet();
+        reload();
+        zone = Z_SHELF;
+        shelfIndex = Math.max(0, now.size() - 1);
+        retarget(false);
+        showToast(it.label + Ui.tr(" fixado no dock", " pinned to the dock"));
     }
 
     private void startReorder() {
