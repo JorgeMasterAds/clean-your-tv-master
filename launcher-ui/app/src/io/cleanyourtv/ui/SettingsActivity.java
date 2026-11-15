@@ -443,7 +443,7 @@ public class SettingsActivity extends Activity {
         private static final String[][] MASTER_INFO = {
                 {"Mostra até 5 títulos que você estava vendo no Stremio. Desligue se não usa o Stremio.", "Shows up to 5 titles you were watching in Stremio. Turn it off if you don't use Stremio."},
                 {"A fileira abaixo das abas: trailers, Top 10, em alta em cada streaming, nota alta, Marvel, DC e Anime. No fim de uma lista, passa para a próxima.", "The row under the tabs: trailers, Top 10, trending on each service, top rated, Marvel, DC and Anime. At the end of a list it moves on to the next."},
-                {"OK num título da Início ou do Explorar abre no Stremio ou na página do título aqui mesmo.", "OK on a title on Home or in Explore opens it in Stremio or on its page here."},
+                {"OK num título abre no app de streaming onde ele está (HBO Max, Netflix...), no Stremio ou na página do título. O Continuar sempre abre no Stremio.", "OK on a title opens it in the streaming app it is on (HBO Max, Netflix...), in Stremio or on its page. Continue always opens in Stremio."},
                 {"Onde tocam os trailers: SmartTube, YouTube ou o primeiro que a TV tiver.", "Where trailers play: SmartTube, YouTube or the first one the TV has."},
                 {"De quanto em quanto tempo o destaque passa para o próximo título sozinho.", "How often the hero moves on to the next title by itself."},
                 {"Quantos títulos cada aba mostra (o Continuar mostra até 5).", "How many titles each tab shows (Continue shows up to 5)."},
@@ -531,7 +531,8 @@ public class SettingsActivity extends Activity {
             return new String[] {
                     Prefs.tabCont() ? Ui.tr("Ligada", "On") : Ui.tr("Desligada", "Off"),
                     Prefs.tabCat() ? Ui.tr("Ligada", "On") : Ui.tr("Desligada", "Off"),
-                    "page".equals(Prefs.openIn()) ? Ui.tr("Página do título", "Title page") : "Stremio",
+                    "page".equals(Prefs.openIn()) ? Ui.tr("Página do título", "Title page")
+                            : "stremio".equals(Prefs.openIn()) ? "Stremio" : Ui.tr("App de streaming", "Streaming app"),
                     tp.equals(DeepLinks.SMARTTUBE) ? "SmartTube" : tp.equals("com.google.android.youtube.tv") ? "YouTube" : Ui.tr("Automático", "Automatic"),
                     every <= 0 ? Ui.tr("Não trocar", "Never") : every + " s",
                     String.valueOf(Prefs.perTab()),
@@ -550,7 +551,12 @@ public class SettingsActivity extends Activity {
             switch (focus) {
                 case 0: Prefs.setTabCont(!Prefs.tabCont()); break;
                 case 1: Prefs.setTabCat(!Prefs.tabCat()); break;
-                case 2: Prefs.setOpenIn("page".equals(Prefs.openIn()) ? "stremio" : "page"); break;
+                case 2: {
+                    String[] modes = {"app", "stremio", "page"};
+                    int at = Math.max(0, java.util.Arrays.asList(modes).indexOf(Prefs.openIn()));
+                    Prefs.setOpenIn(modes[(at + dir + modes.length) % modes.length]);
+                    break;
+                }
                 case 3: {
                     int at = java.util.Arrays.asList(TRAILER_APPS).indexOf(Prefs.trailerPlayer());
                     Prefs.setTrailerPlayer(TRAILER_APPS[(Math.max(0, at) + dir + TRAILER_APPS.length) % TRAILER_APPS.length]);

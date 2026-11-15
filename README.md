@@ -14,10 +14,12 @@ Grátis e de código aberto. Baixe o APK em **[Releases](../../releases)**.
   bolinhas para navegar. Relógio, clima e atalhos no topo.
 - **Abas**: Explorar, **Continuar**, Filmes e Séries, com um **seletor de categoria** logo abaixo
   (`‹ Top 10 hoje ›`): as setas trocam a lista e, no fim de uma, a próxima entra sozinha.
+- **OK abre no streaming**: o título abre direto no app onde ele está (HBO Max, Disney+, Netflix...); o que não
+  está em nenhum dos seus abre no Stremio. Dá para trocar para Stremio ou página do título nas Configurações.
 - **Continuar assistindo (Stremio)**: até 5 títulos da sua conta do Stremio, com barra de onde você parou e o tempo
   que falta. OK abre direto no Stremio, no episódio certo. Trailers e filmes já terminados não entram.
 - **Categorias**: Trailers novos, Top 10 hoje, Em alta na semana, Em alta na Netflix, no Prime Video, no Disney+ e na
-  HBO Max, Novidades, Nota 8+, Nota 8,5+, Marvel, DC e Anime. Dados do TMDB, atualizados a cada 6 horas
+  HBO Max, Novidades, Nota 8+, Marvel, DC e Anime. OK no seletor abre a grade com todas as listas. Dados do TMDB, atualizados a cada 6 horas
   ("Em alta na Netflix" = os títulos mais populares que estão na Netflix do seu país, não o Top 10 oficial da Netflix).
 - **Trailers novos**: as estreias dos próximos 4 meses; OK toca o trailer no SmartTube (ou no YouTube).
 - **Sem infantil e sem coisa velha** nas sugestões: só títulos bem avaliados e recentes.

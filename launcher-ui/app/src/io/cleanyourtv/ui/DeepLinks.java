@@ -94,7 +94,17 @@ final class DeepLinks {
      * or the title's own page here when Stremio is missing or TMDB has no IMDb id.
      */
     static void openTitle(Context c, String kind, int id) {
-        if (!Providers.installed(c, STREMIO) || "page".equals(Prefs.openIn())) {
+        // "Streaming" from Explore: the title's page lists the services it is on, with a button for each.
+        if (!"stremio".equals(Prefs.openIn())) {
+            DetailActivity.open(c, kind, id);
+            return;
+        }
+        openInStremio(c, kind, id);
+    }
+
+    /** The title's page in Stremio (IMDb id from TMDB), or its page here when Stremio is missing. */
+    static void openInStremio(Context c, String kind, int id) {
+        if (!Providers.installed(c, STREMIO)) {
             DetailActivity.open(c, kind, id);
             return;
         }
@@ -119,12 +129,53 @@ final class DeepLinks {
             String player = Prefs.trailerPlayer();
             if ((!player.isEmpty() && open(c, player, url)) || open(c, SMARTTUBE, url) || open(c, "com.google.android.youtube.tv", url)) return;
         }
+        // Settings › Tabs and Stremio › Open movies and shows in: the streaming app (default), Stremio or the page.
+        String mode = Prefs.openIn();
+        if (!p.cont && "page".equals(mode)) {
+            DetailActivity.open(c, p.kind, p.id);
+            return;
+        }
+        if (!p.cont && "app".equals(mode)) {
+            // The service's own app, even when Settings › Services sends that service to Stremio.
+            String app = p.app == null ? null : Providers.officialApp(c, p.app);
+            if (app == null && p.pkg != null && !p.pkg.equals(STREMIO) && !p.pkg.equals(SMARTTUBE)) app = p.pkg;
+            if (app != null && Providers.installed(c, app)) {
+                openInApp(c, p, app);
+                return;
+            }
+        }
         if (p.cont && p.imdb != null && p.imdb.startsWith("tt")) {
             boolean movie = "movie".equals(p.kind);
             String video = p.video != null && !p.video.isEmpty() ? p.video : p.imdb;
             if (open(c, STREMIO, "stremio:///detail/" + (movie ? "movie" : "series") + "/" + p.imdb + "/" + video)) return;
         }
-        openTitle(c, p.kind, p.id);
+        // Not on any of the TV's services (or Stremio chosen): its page in Stremio.
+        openInStremio(c, p.kind, p.id);
+    }
+
+    /** The title right in its streaming app (Wikidata's id for it), else the app's own home. */
+    private static void openInApp(Context c, Recs.Pick p, String pkg) {
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        new Thread(() -> {
+            String url = null;
+            try {
+                Map<String, String> links = find(c, p.kind, p.id, p.title);
+                url = links == null ? null : links.get(pkg);
+            } catch (Exception e) {
+                AppLog.w("deep link " + pkg + ": " + e.getMessage());
+            }
+            String link = url;
+            main.post(() -> {
+                if (open(c, pkg, link)) return;
+                Intent i = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
+                if (i == null) i = c.getPackageManager().getLaunchIntentForPackage(pkg);
+                if (i != null) {
+                    c.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } else {
+                    openTitle(c, p.kind, p.id);
+                }
+            });
+        }).start();
     }
 
     /** Opens the title in the app when there's a link it takes; otherwise false (the caller opens the app). */

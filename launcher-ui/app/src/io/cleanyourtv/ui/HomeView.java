@@ -179,6 +179,69 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private float chipShift;     // how far the row is scrolled so the focused pill stays on screen
     private final RectF chipRect = new RectF();
     private Paint chipText, chipTextOn, chipFill;
+    // OK on the category pill: a quick menu with every list, so no walking through them one by one.
+    private boolean catMenu;
+    private int catMenuIndex;
+    private static final int CAT_COLS = 3;
+    private static final float CAT_CELL_W = 340, CAT_CELL_H = 62, CAT_GAP = 14, CAT_PAD = 24;
+
+    private void openCatMenu() {
+        catMenu = true;
+        catMenuIndex = Recs.categoryIndex();
+        heroDirty = true;
+        click.open();
+    }
+
+    private void moveCatMenu(int dx, int dy) {
+        int n = Recs.CATEGORIES.length, col = catMenuIndex % CAT_COLS, row = catMenuIndex / CAT_COLS;
+        int rows = (n + CAT_COLS - 1) / CAT_COLS;
+        col = Math.max(0, Math.min(CAT_COLS - 1, col + (Ui.he ? -dx : dx)));
+        row = Math.max(0, Math.min(rows - 1, row + dy));
+        int next = Math.min(n - 1, row * CAT_COLS + col);
+        if (next == catMenuIndex) return;
+        catMenuIndex = next;
+        heroDirty = true;
+        click.move();
+    }
+
+    private void pickCatMenu() {
+        catMenu = false;
+        showCategory(catMenuIndex);
+        zone = Z_CHIPS;
+        heroDirty = true;
+        retarget(false);
+    }
+
+    /** The quick menu: every list in a grid under the pill, the current one red, the focused one white. */
+    private void drawCatMenu(Canvas c) {
+        if (!catMenu || !chipsOn()) return;
+        String[][] all = Recs.CATEGORIES;
+        int rows = (all.length + CAT_COLS - 1) / CAT_COLS, current = Recs.categoryIndex();
+        float pw = (CAT_COLS * CAT_CELL_W + (CAT_COLS - 1) * CAT_GAP + 2 * CAT_PAD) * k;
+        float ph = (rows * CAT_CELL_H + (rows - 1) * CAT_GAP + 2 * CAT_PAD) * k;
+        float px = Ui.he ? CONTENT_R * k - pw : MARGIN * k, py = (CHIP_TOP + CHIP_H + 18) * k;
+        fill.setShader(null);
+        fill.setColor(0xF0120306);
+        chipRect.set(px, py, px + pw, py + ph);
+        c.drawRoundRect(chipRect, 30 * k, 30 * k, fill);
+        fill.setStyle(Paint.Style.STROKE);
+        fill.setStrokeWidth(2 * k);
+        fill.setColor(0x80FF2D46);
+        c.drawRoundRect(chipRect, 30 * k, 30 * k, fill);
+        fill.setStyle(Paint.Style.FILL);
+        for (int i = 0; i < all.length; i++) {
+            int col = i % CAT_COLS, row = i / CAT_COLS;
+            if (Ui.he) col = CAT_COLS - 1 - col;
+            float x = px + (CAT_PAD + col * (CAT_CELL_W + CAT_GAP)) * k, y = py + (CAT_PAD + row * (CAT_CELL_H + CAT_GAP)) * k;
+            chipRect.set(x, y, x + CAT_CELL_W * k, y + CAT_CELL_H * k);
+            boolean focus = i == catMenuIndex, on = i == current;
+            if (focus) chipRect.inset(-4 * k, -3 * k);
+            chipFill.setColor(focus ? 0xFFFFFFFF : on ? 0xFFD3122C : 0x26FFFFFF);
+            c.drawRoundRect(chipRect, chipRect.height() / 2, chipRect.height() / 2, chipFill);
+            Paint p = focus ? chipTextOn : chipText;
+            c.drawText(all[i][1], chipRect.centerX() - p.measureText(all[i][1]) / 2, chipRect.centerY() + Ui.halfCap(p), p);
+        }
+    }
 
     private final Activity activity;
     private final Scene scene = new Scene();
@@ -391,7 +454,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             scene.setOffset(0, kind == DRAWER || kind == STATUS ? 0 : getTranslationY());
             switch (kind) {
                 case SKY: drawSky(c); break;
-                case HERO: drawLightTop(c); drawChips(c); break;
+                case HERO: drawLightTop(c); drawChips(c); drawCatMenu(c); break;
                 case STATUS: drawLightButtons(c); break;
                 case PLATTER: drawPlatter(c); break;
                 case TILES: drawTiles(c); break;
@@ -2163,6 +2226,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void back() {
+        if (catMenu) {
+            catMenu = false;
+            heroDirty = true;
+            click.move();
+            return;
+        }
         if (sheetOpen) {
             closeSheet();
         } else if (zone == Z_DRAWER || zone == WIDGETS) {
@@ -2178,6 +2247,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void move(int dx, int dy) {
+        if (catMenu) {
+            moveCatMenu(dx, dy);
+            return;
+        }
         if (sheetOpen) {
             moveGrid(dx, dy);
             return;
@@ -2308,11 +2381,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (others.isEmpty()) return;
             it = others.get(gridIndex);
             r = focusedCell;
+        } else if (catMenu) {
+            pickCatMenu();
+            return;
         } else if (zone == Z_CHIPS) {
-            if (cards.isEmpty()) return;
-            zone = Z_CARDS;
-            cardIndex = 0;
-            retarget(false);
+            openCatMenu();
             return;
         } else if (zone == Z_HERO) {
             Recs.Pick p = currentPick();
@@ -3093,7 +3166,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             heroInfo.setShadowLayer(10 * k, 0, 2 * k, 0x80000000);
         }
         drawHeaderInfo(c);
+        if (catMenu) return;
         Recs.Pick p = heroPick();
+        if (p == null && tab == CAT_TAB && chipsOn()) {
+            c.drawText(Ui.tr("Carregando…", "Loading…"), MARGIN * k, 560 * k, heroTitle);
+            c.drawText(Recs.categoryLabel() + Ui.tr(": buscando os títulos", ": fetching the titles"), MARGIN * k, 612 * k, heroMeta);
+            return;
+        }
         if (p == null) return;
         float x = MARGIN * k, maxW = 1300 * k;
         boolean focused = zone == Z_CARDS;
@@ -3141,7 +3220,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             bx += bw + 9 * k;
         }
         if (focused) {
-            String hint = p.cont ? "OK para continuar no Stremio" : p.trailer != null ? "OK para ver o trailer" : Ui.tr("OK para assistir no Stremio", "OK to watch in Stremio");
+            String mode = Prefs.openIn(), service = Recs.serviceName(p);
+            String hint = p.cont ? "OK para continuar no Stremio" : p.trailer != null ? "OK para ver o trailer"
+                    : "page".equals(mode) ? Ui.tr("OK para ver os detalhes", "OK for the details")
+                    : "app".equals(mode) && !service.isEmpty() && !"Stremio".equals(service) ? Ui.tr("OK para assistir no ", "OK to watch on ") + service
+                    : Ui.tr("OK para assistir no Stremio", "OK to watch in Stremio");
             c.drawText(hint, bx + 18 * k, by + bh / 2 + Ui.halfCap(heroHint), heroHint);
         }
     }
@@ -3328,7 +3411,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     zone = Z_TOP;
                     topIndex = 0;
                 } else if (cards.isEmpty()) {
-                    zone = Z_SHELF;
+                    return true;    // the list is still loading: the focus waits on the pill
                 } else {
                     zone = Z_CARDS;
                     cardIndex = 0;

@@ -108,6 +108,8 @@ final class Recs {
     private final Context context;
     private final SharedPreferences cache;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    // Categories load on their own threads: a list never waits behind the hourly picks or another list.
+    private final ExecutorService catIo = Executors.newFixedThreadPool(2);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<Listener> listeners = new ArrayList<>();
     // This hour's, built and ready to draw, in the order they were last drawn: the one unused longest goes first.
@@ -243,7 +245,6 @@ final class Recs {
             {"max", "Em alta na HBO Max", "with_watch_providers=1899", "with_watch_providers=1899"},
             {"new", "Novidades", "primary_release_date.gte=@-150&vote_count.gte=40", "first_air_date.gte=@-150&vote_count.gte=20"},
             {"rated8", "Nota 8+", "vote_average.gte=8&vote_count.gte=800", "vote_average.gte=8&vote_count.gte=400"},
-            {"rated85", "Nota 8,5+", "vote_average.gte=8.5&vote_count.gte=300", "vote_average.gte=8.5&vote_count.gte=200"},
             {"marvel", "Marvel", "with_companies=420", "with_companies=420|38679"},
             {"dc", "DC", "with_companies=128064|9993", "with_companies=128064|9993"},
             {"anime", "Anime", "with_genres=16&with_original_language=ja", "with_genres=16&with_original_language=ja"},
@@ -285,7 +286,7 @@ final class Recs {
             List<Pick> have = categoryPicks.get(id);
             Long at = categoryAt.get(id);
             boolean stale = at == null || System.currentTimeMillis() - at > LIST_EVERY;
-            if (stale && categoryLoading.add(id)) io.execute(() -> fetchCategory(id));
+            if (stale && categoryLoading.add(id)) catIo.execute(() -> fetchCategory(id));
             return have == null ? new ArrayList<>() : new ArrayList<>(have);
         }
     }
