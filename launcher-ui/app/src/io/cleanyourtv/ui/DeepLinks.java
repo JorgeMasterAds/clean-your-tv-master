@@ -73,6 +73,9 @@ final class DeepLinks {
                     out.put("com.hbo.hbonow", "https://play.hbomax.com/" + v);
                 }
                 if ((v = value(claims, "P8055")) != null) out.put("com.amazon.amazonvideo.livingroom", "https://app.primevideo.com/detail?gti=" + v);
+                if ((v = value(claims, "P345")) != null && v.startsWith("tt")) {   // IMDb id: Stremio opens the title page
+                    out.put("com.stremio.one", "stremio:///detail/" + (movie ? "movie" : "series") + "/" + v + "/" + v);
+                }
             }
         } catch (Exception e) {
             AppLog.w("deep link " + key + ": " + e.getMessage());
@@ -81,6 +84,31 @@ final class DeepLinks {
         synchronized (CACHE) { CACHE.put(key, out); }
         sp.edit().putString(key, System.currentTimeMillis() + "|" + new JSONObject(out)).apply();
         return out;
+    }
+
+    static final String STREMIO = "com.stremio.one";
+
+    /**
+     * A poster or banner picked on Home or in Explore: straight to the title's page in Stremio (IMDb id from TMDB),
+     * or the title's own page here when Stremio is missing or TMDB has no IMDb id.
+     */
+    static void openTitle(Context c, String kind, int id) {
+        if (!Providers.installed(c, STREMIO)) {
+            DetailActivity.open(c, kind, id);
+            return;
+        }
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        new Thread(() -> {
+            String imdb = null;
+            try {
+                imdb = Tmdb.get("/" + kind + "/" + id + "/external_ids").optString("imdb_id", null);
+            } catch (Exception e) {
+                AppLog.w("imdb id " + kind + ":" + id + ": " + e.getMessage());
+            }
+            String url = imdb != null && imdb.startsWith("tt")
+                    ? "stremio:///detail/" + (kind.equals("movie") ? "movie" : "series") + "/" + imdb + "/" + imdb : null;
+            main.post(() -> { if (!open(c, STREMIO, url)) DetailActivity.open(c, kind, id); });
+        }).start();
     }
 
     /** Opens the title in the app when there's a link it takes; otherwise false (the caller opens the app). */

@@ -941,7 +941,7 @@ public class ExploreActivity extends Activity implements TitleMenu.Host {
 
     private void open(Tmdb.Title t) {
         if (current.equals(SEARCH) && filter != null && !filter.query.isEmpty()) remember(filter.query);
-        DetailActivity.open(this, t.kind, t.id);
+        DeepLinks.openTitle(this, t.kind, t.id);
     }
 
     /** The top 10: a title and a grid, each poster with its big number. */
@@ -2018,8 +2018,6 @@ public class ExploreActivity extends Activity implements TitleMenu.Host {
                             discover("movie", "&with_watch_providers=" + s.ids + "&sort_by=popularity.desc")))
                             .more(() -> showPage(SERVICE + s.key)));
                 }
-                out.add(new Section(Ui.tr("Animes em alta", "Trending anime"), () -> fetch(Filter.of("all", "anime"), 1)).more(() -> showPage(ANIME)));
-                out.add(new Section(Ui.tr("Para as crianças", "For the kids"), () -> fetch(Filter.of("all", "infantil"), 1)).more(() -> showPage(KIDS)));
                 out.add(new Section(Ui.tr("Favoritos", "Favorites"), () -> Tmdb.accountList(this, "favorite")).personal());
                 out.add(new Section(Ui.tr("Suas notas", "Your ratings"), () -> Tmdb.accountList(this, "rated")).personal());
                 out.add(new Section(Ui.tr("Pessoas em alta", "Trending people"), () -> Tmdb.titles(Tmdb.get("/trending/person/week"), "person"))

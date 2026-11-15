@@ -71,8 +71,12 @@ final class Backdrop {
             int[] lightGlass = glass == null ? null : whiten(glass.clone(), 0.74f);
             int[] night = darken(frost.clone(), 0.76f);
             int[] nightGlass = glass == null ? null : darken(glass, 0.56f);
+            // Full-screen hero: the sharp photo behind Home (1280 × 720, 16-bit colour, about 1.8 MB per pick).
+            Bitmap sharp = Bitmap.createScaledBitmap(out, 1280, 720, true);
+            Bitmap hero = sharp.copy(Bitmap.Config.RGB_565, false);
+            if (hero != null && hero != sharp) sharp.recycle(); else hero = sharp;
             out.recycle();
-            return new Backdrop(null, frost, null, wide, tall, light, lightGlass, night, nightGlass);
+            return new Backdrop(hero, frost, null, wide, tall, light, lightGlass, night, nightGlass);
         }
 
         float boost = Math.max(0, Math.min(0.3f, (luminance(out, 0, 0.22f, 0.5f, 0.62f) - 0.22f) * 1.1f));

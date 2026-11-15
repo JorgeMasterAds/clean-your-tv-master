@@ -45,6 +45,8 @@ final class Recs {
         String kind;            // "movie" or "tv"
         String title, backdrop, meta = "", app, pkg;
         boolean detailed;
+        boolean cont;           // from the Stremio library ("Continue watching"), shown first
+        float progress;         // how far in (0..1), for the bar under the title
         boolean localized;      // the title reads in the TV's language (not saved: it only orders a fresh list)
     }
 
@@ -202,11 +204,16 @@ final class Recs {
         // Three new ones per hour first, never two from the same franchise ("Law & Order" and "Law & Order: Special…").
         List<Pick> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
+        // What you were watching in Stremio comes first (movies or shows, by the tab).
+        for (Pick p : continuing) {
+            if ((kind == null || kind.equals(p.kind)) && seen.add(franchise(p.title))) out.add(p);
+        }
         for (int i = 0; i < list.size(); i++) {
             Pick p = list.get((int) ((hour * 3 + i) % list.size()));
             if (seen.add(franchise(p.title))) out.add(p);
         }
-        return out;
+        int cap = 10 + (int) out.stream().filter(p -> p.cont).count();   // 10 suggestions per tab, after what you were watching
+        return out.size() > cap ? new ArrayList<>(out.subList(0, cap)) : out;
     }
 
     /** "Law & Order: Special Victims Unit" → "law & order" (what comes before ":" or " - "). */
@@ -250,8 +257,93 @@ final class Recs {
     }
 
     /** With a key: fetches the list if stale or the time of day (morning/afternoon/night) changed; then the details. */
+    // MARK: - Continue watching (the Stremio account's library)
+
+    private volatile List<Pick> continuing = new ArrayList<>();
+    private volatile long continueAt;
+
+    /** The Stremio account linked with config.json's "stremio_auth" (empty when there is none). */
+    private String stremioAuth() {
+        return context.getSharedPreferences("stremio", Context.MODE_PRIVATE).getString("auth", "");
+    }
+
+    /**
+     * What was being watched in Stremio, newest first: the library items with a position saved (or a series with an
+     * episode under way), each matched to TMDB by its IMDb id so it gets a backdrop. Shown first on Home.
+     */
+    private void fetchContinue() {
+        String auth = stremioAuth();
+        if (auth.isEmpty()) { continuing = new ArrayList<>(); return; }
+        try {
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL("https://api.strem.io/api/datastoreGet").openConnection();
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(12000);
+            c.setRequestMethod("POST");
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json");
+            JSONObject body = new JSONObject().put("authKey", auth).put("collection", "libraryItem").put("ids", new JSONArray()).put("all", true);
+            c.getOutputStream().write(body.toString().getBytes("UTF-8"));
+            JSONArray items;
+            try {
+                items = new JSONObject(Tmdb.readAll(c.getInputStream())).optJSONArray("result");
+            } finally {
+                c.disconnect();
+            }
+            if (items == null) return;
+            List<JSONObject> going = new ArrayList<>();
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject it = items.getJSONObject(i), st = it.optJSONObject("state");
+                if (it.optBoolean("removed") || st == null || !it.optString("_id").startsWith("tt")) continue;
+                String type = it.optString("type");
+                if (!type.equals("movie") && !type.equals("series")) continue;
+                boolean started = st.optLong("timeOffset") > 0 || (type.equals("series") && !st.optString("video_id").isEmpty());
+                if (started && !st.optString("lastWatched").isEmpty()) going.add(it);
+            }
+            going.sort((a, b) -> b.optJSONObject("state").optString("lastWatched").compareTo(a.optJSONObject("state").optString("lastWatched")));
+            List<Pick> out = new ArrayList<>();
+            for (JSONObject it : going) {
+                if (out.size() >= 5) break;
+                String imdb = it.optString("_id");
+                boolean movie = it.optString("type").equals("movie");
+                try {
+                    JSONObject f = get("/find/" + imdb + "?external_source=imdb_id&language=" + lang());
+                    JSONArray r = f.optJSONArray(movie ? "movie_results" : "tv_results");
+                    if (r == null || r.length() == 0) continue;
+                    List<Pick> one = new ArrayList<>();
+                    add(one, r.getJSONObject(0), movie ? "movie" : "tv");
+                    if (one.isEmpty()) continue;
+                    Pick p = one.get(0);
+                    JSONObject st = it.optJSONObject("state");
+                    String ep = "";
+                    String[] v = st.optString("video_id").split(":");
+                    if (!movie && v.length == 3) ep = " · T" + v[1] + " E" + v[2];
+                    long dur = st.optLong("duration"), off = st.optLong("timeOffset");
+                    String left = dur > 0 && off > 0 ? " · faltam " + Math.max(1, (dur - off) / 60000) + " min" : "";
+                    p.meta = (ep.isEmpty() ? "Filme" : "Série" + ep) + left;
+                    p.progress = dur > 0 ? Math.max(0, Math.min(1, off / (float) dur)) : 0;
+                    p.pkg = DeepLinks.STREMIO;
+                    p.app = "Stremio";
+                    p.detailed = true;
+                    p.cont = true;
+                    out.add(p);
+                } catch (Exception ignored) {
+                }
+            }
+            continuing = out;
+            notifyListeners();
+        } catch (Exception e) {
+            AppLog.w("stremio library: " + e.getMessage());
+        }
+    }
+
     void refreshIfStale() {
-        if (!hasKey(context) || fetching) return;
+        if (!hasKey(context)) return;
+        long tick = System.currentTimeMillis();
+        if (tick - continueAt > 5 * 60_000L || tick < continueAt) {
+            continueAt = tick;
+            io.execute(this::fetchContinue);
+        }
+        if (fetching) return;
         long now = System.currentTimeMillis();
         long stamp = sourceStamp();   // a new key, country or installed streaming-app set refetches
         boolean newKey = stamp != keyStamp;
@@ -415,6 +507,21 @@ final class Recs {
 
     // MARK: - TMDB
 
+    /** Only what is worth showing: rated well by enough people, and not kids, family, news, reality or talk shows. */
+    private static boolean good(JSONObject o, double minVote, int minCount) {
+        if (o.optDouble("vote_average", 0) < minVote || o.optInt("vote_count", 0) < minCount) return false;
+        // Nothing old: shows that started before 2016, movies from before 2015.
+        String first = o.optString("first_air_date", ""), released = o.optString("release_date", "");
+        if (!first.isEmpty() && first.compareTo("2016") < 0) return false;
+        if (!released.isEmpty() && released.compareTo("2015") < 0) return false;
+        JSONArray g = o.optJSONArray("genre_ids");
+        if (g != null) for (int i = 0; i < g.length(); i++) {
+            int id = g.optInt(i);
+            if (id == 16 || id == 10762 || id == 10751 || id == 10763 || id == 10764 || id == 10767) return false;
+        }
+        return true;
+    }
+
     private void fetchList(int p) throws Exception {
         // The services the TV has, by their TMDB ids in your region.
         Map<Integer, String[]> services = new HashMap<>();
@@ -434,9 +541,14 @@ final class Recs {
         //    on one of the TV's services: the details say where (and are then ready).
         List<Pick> hotMovies = new ArrayList<>(), hotShows = new ArrayList<>();
         for (String kind : new String[] {"movie", "tv"}) {
-            JSONArray hot = get("/trending/" + kind + "/week?language=" + lang()).getJSONArray("results");
+            JSONArray hot = get("/trending/" + kind + "/day?language=" + lang()).getJSONArray("results");
+            JSONArray week = get("/trending/" + kind + "/week?language=" + lang() + "&page=1").getJSONArray("results");
+            for (int i = 0; i < week.length(); i++) hot.put(week.getJSONObject(i));
             List<Pick> candidates = new ArrayList<>();
-            for (int i = 0; i < hot.length() && i < 20; i++) add(candidates, hot.getJSONObject(i), kind);
+            for (int i = 0; i < hot.length() && candidates.size() < 20; i++) {
+                JSONObject o = hot.getJSONObject(i);
+                if (good(o, 6.8, 150)) add(candidates, o, kind);   // only well-rated, no kids/family/reality/talk
+            }
             for (Pick pick : candidates) {
                 try {
                     fetchDetails(pick);
@@ -448,9 +560,9 @@ final class Recs {
         }
         // 2. Recent releases on the TV's services: movies from the past year and shows with a new episode in the
         //    past 3 months.
-        JSONArray movies = get("/discover/movie?vote_count.gte=30&primary_release_date.gte=" + day(-365)
+        JSONArray movies = get("/discover/movie?vote_count.gte=300&vote_average.gte=7&without_genres=10751,16,10402&primary_release_date.gte=" + day(-365)
                 + "&primary_release_date.lte=" + day(0) + common).getJSONArray("results");
-        JSONArray shows = get("/discover/tv?vote_count.gte=20&air_date.gte=" + day(-90) + "&air_date.lte=" + day(0)
+        JSONArray shows = get("/discover/tv?vote_count.gte=100&vote_average.gte=7.2&without_genres=16,10762,10751,10763,10764,10767&first_air_date.gte=2016-01-01&air_date.gte=" + day(-90) + "&air_date.lte=" + day(0)
                 + common).getJSONArray("results");
         List<Pick> newMovies = new ArrayList<>(), newShows = new ArrayList<>();
         for (int i = 0; i < movies.length(); i++) add(newMovies, movies.getJSONObject(i), "movie");

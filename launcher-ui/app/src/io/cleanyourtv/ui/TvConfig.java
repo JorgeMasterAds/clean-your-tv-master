@@ -100,6 +100,9 @@ final class TvConfig {
                 else if (region.matches("[A-Za-z]{2}")) Prefs.setTmdbRegion(region);
                 else AppLog.w("config.json: tmdb_region skipped");
             }
+            if (o.has("stremio_auth")) {   // the Stremio account, for "Continue watching" on Home
+                c.getSharedPreferences("stremio", Context.MODE_PRIVATE).edit().putString("auth", o.optString("stremio_auth").trim()).apply();
+            }
             JSONObject remote = o.optJSONObject("remote");
             if (remote != null) writeRemote(c, remote);
             JSONObject buttons = o.optJSONObject("buttons");
