@@ -165,7 +165,7 @@ public class SettingsActivity extends Activity {
             scene.setMotion(0.5f, 0.2f);
             scene.applyPalette();
             setFocusable(true);
-            setContentDescription("CleanYourTV UI");
+            setContentDescription("Clean Your TV Master");
             // TalkBack: one item per row, id = row + 1.
             spoken = new Spoken(this, new Spoken.Source() {
                 @Override public void items(List<Integer> out) { for (int i = 1; i <= rowCount(); i++) out.add(i); }
@@ -195,7 +195,8 @@ public class SettingsActivity extends Activity {
                     String[] names = {Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview") + ", " + styleName(Prefs.screensaverStyle()),
                             Ui.tr("Ajustes do Início", "Home Settings"),
                             Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Serviços", "Services"),
-                            Ui.tr("Conta TMDB, ", "TMDB account, ") + account(), Ui.tr("Ajustes da TV", "TV Settings")};
+                            Ui.tr("Conta TMDB, ", "TMDB account, ") + account(), Ui.tr("Conta Stremio, ", "Stremio account, ") + stremioState(),
+                            Ui.tr("Categoria da Início, ", "Home category, ") + Recs.categoryLabel(), Ui.tr("Ajustes da TV", "TV Settings")};
                     return row < names.length ? names[row] : "";
                 }
                 case HOME_SETTINGS: {
@@ -297,7 +298,7 @@ public class SettingsActivity extends Activity {
 
         private int rowCount() {
             switch (screen) {
-                case MAIN: return 7;
+                case MAIN: return 9;
                 case HOME_SETTINGS: return settingLabels().length;
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
                 case SHELF_EDIT: return Math.min(PICK_VISIBLE, shelfRows.size());
@@ -321,14 +322,18 @@ public class SettingsActivity extends Activity {
                 scene.advance(seconds);
             }
             scene.drawBackground(c);
+            // Clean Your TV Master: a deep red tone over the sky.
+            if (redTone == null) redTone = new Paint();
+            redTone.setShader(new android.graphics.LinearGradient(0, 0, w, getHeight(), 0xCC5A0010, 0x99120004, android.graphics.Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, getHeight(), redTone);
 
             // On the left: big symbol, title, description.
             float cx = 500 * k;
-            Symbols.draw(getContext(), c, "sparkles", cx, 400 * k, 150 * k, 0xEBFFFFFF);
-            c.drawText("CleanYourTV UI", cx, 612 * k, title);
-            c.drawText(Ui.tr("Início e tela de descanso da TV", "Your TV's home screen and screensaver"), cx, 660 * k, subtitle);
+            Symbols.draw(getContext(), c, "sparkles", cx, 400 * k, 150 * k, 0xFFFF4D5E);
+            c.drawText("Clean Your TV Master", cx, 612 * k, title);
+            c.drawText(Ui.tr("Início, Stremio e controle da TV", "Home screen, Stremio and the TV remote"), cx, 660 * k, subtitle);
             c.drawText(versionName(getContext()), cx, 704 * k, version);
-            c.drawText("Matheus Caldeira · github.com/matheus-caldeira/cleanyourtv-ui", cx, 742 * k, version);
+            c.drawText(Ui.tr("Criado por Jorge Master", "Made by Jorge Master") + " · github.com/JorgeMasterAds/clean-your-tv-master", cx, 742 * k, version);
 
             if (screen == MAIN) drawMain(c); else if (screen == PICKER) drawPicker(c); else if (screen == SHELF_EDIT) drawShelfEditor(c); else drawList(c);
         }
@@ -336,7 +341,8 @@ public class SettingsActivity extends Activity {
         private void drawMain(Canvas c) {
             String[] labels = {Ui.tr("Tela de Descanso", "Screensaver"), Ui.tr("Ajustes do Início", "Home Settings"),
                     Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Serviços", "Services"),
-                    Ui.tr("Conta TMDB", "TMDB account"), Ui.tr("Ajustes da TV", "TV Settings")};
+                    Ui.tr("Conta TMDB", "TMDB account"), Ui.tr("Conta Stremio", "Stremio account"),
+                    Ui.tr("Categoria da Início", "Home category"), Ui.tr("Ajustes da TV", "TV Settings")};
             for (int i = 0; i < labels.length; i++) {
                 float y = (LIST_TOP + i * (ROW_H + ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
@@ -345,17 +351,97 @@ public class SettingsActivity extends Activity {
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
                 c.drawText(labels[i], rowRect.left + 30 * k, base, rowLabel);
                 float right = rowRect.right - 30 * k;
-                if (i == 0 || i == 5) {
+                if (i == 0 || i == 5 || i == 6 || i == 7) {
                     rowValue.setColor(blend(0x8CFFFFFF, 0x8C1C1C1E, f));
                     // The screensaver's style: ← → change it (shown while focused), OK shows it.
                     String style = styleName(Prefs.screensaverStyle());
-                    c.drawText(i == 5 ? account() : f > 0.5f ? "‹  " + style + "  ›" : style, right, base, rowValue);
+                    String value = i == 5 ? account() : i == 6 ? stremioState() : i == 7 ? Recs.categoryLabel()
+                            : f > 0.5f ? "‹  " + style + "  ›" : style;
+                    c.drawText(value, right, base, rowValue);
                 } else {
                     float cw = Symbols.width(getContext(), "chevron_right", 22 * k);
                     Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, blend(0x66FFFFFF, 0x991C1C1E, f));
                 }
             }
             drawRecs(c, (LIST_TOP + labels.length * (ROW_H + ROW_GAP) + 46) * k);
+        }
+
+        private Paint redTone;
+
+        private String stremioState() {
+            String auth = getContext().getSharedPreferences("stremio", Context.MODE_PRIVATE).getString("auth", "");
+            return auth.isEmpty() ? Ui.tr("Não conectada", "Not connected") : Ui.tr("Conectada", "Connected");
+        }
+
+        /** The category the Home's last tab shows (the same list as the tab's own selector). */
+        private void chooseHomeCategory() {
+            String[][] all = Recs.CATEGORIES;
+            String[] names = new String[all.length];
+            int at = 0;
+            for (int i = 0; i < all.length; i++) {
+                names[i] = all[i][1];
+                if (all[i][0].equals(Recs.category())) at = i;
+            }
+            new android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(Ui.tr("Categoria da Início", "Home category"))
+                    .setSingleChoiceItems(names, at, (d, which) -> {
+                        d.dismiss();
+                        Recs.get(getContext()).setCategory(all[which][0]);
+                        invalidate();
+                    })
+                    .show();
+        }
+
+        /**
+         * Links the Stremio account without typing a password on the TV: Stremio gives a short code, opened on the
+         * phone (link.stremio.com/CODE) while signed in; the TV checks every 3 s and keeps the key it gets.
+         */
+        private void linkStremio() {
+            android.content.SharedPreferences sp = getContext().getSharedPreferences("stremio", Context.MODE_PRIVATE);
+            if (!sp.getString("auth", "").isEmpty()) {
+                new android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                        .setTitle(Ui.tr("Conta Stremio", "Stremio account"))
+                        .setMessage(Ui.tr("Conectada. O Continuar assistindo vem dela.", "Connected. Continue watching comes from it."))
+                        .setPositiveButton(Ui.tr("Desconectar", "Disconnect"), (d, w2) -> {
+                            sp.edit().remove("auth").apply();
+                            invalidate();
+                        })
+                        .setNegativeButton(Ui.tr("Fechar", "Close"), null)
+                        .show();
+                return;
+            }
+            final android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(Ui.tr("Conta Stremio", "Stremio account"))
+                    .setMessage(Ui.tr("Pedindo um código…", "Getting a code…"))
+                    .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                    .show();
+            new Thread(() -> {
+                try {
+                    org.json.JSONObject r = new org.json.JSONObject(Tmdb.readAll(new java.net.URL("https://link.stremio.com/api/create?type=Create").openStream()))
+                            .getJSONObject("result");
+                    String code = r.getString("code");
+                    post(() -> dialog.setMessage(Ui.tr("No celular, entre no Stremio e abra:\n\nlink.stremio.com/" + code + "\n\nEsta tela fecha sozinha quando ligar.",
+                            "On your phone, sign in to Stremio and open:\n\nlink.stremio.com/" + code + "\n\nThis closes by itself once linked.")));
+                    for (int i = 0; i < 200 && dialog.isShowing(); i++) {   // up to 10 minutes
+                        Thread.sleep(3000);
+                        org.json.JSONObject res = new org.json.JSONObject(Tmdb.readAll(
+                                new java.net.URL("https://link.stremio.com/api/read?type=Read&code=" + code).openStream())).optJSONObject("result");
+                        String key = res == null ? "" : res.optString("authKey", "");
+                        if (!key.isEmpty()) {
+                            sp.edit().putString("auth", key).apply();
+                            post(() -> {
+                                dialog.dismiss();
+                                Toast.makeText(activity, Ui.tr("Stremio conectado.", "Stremio linked."), Toast.LENGTH_LONG).show();
+                                invalidate();
+                            });
+                            return;
+                        }
+                    }
+                } catch (Exception e) {
+                    AppLog.w("stremio link: " + e.getMessage());
+                    post(() -> dialog.setMessage(Ui.tr("Não deu para ligar agora: ", "Couldn't link now: ") + e.getMessage()));
+                }
+            }).start();
         }
 
         private String account() {
@@ -411,9 +497,9 @@ public class SettingsActivity extends Activity {
 
         private static String versionName(Context c) {
             try {
-                return "CleanYourTV UI " + c.getPackageManager().getPackageInfo(c.getPackageName(), 0).versionName;
+                return "Clean Your TV Master " + c.getPackageManager().getPackageInfo(c.getPackageName(), 0).versionName;
             } catch (android.content.pm.PackageManager.NameNotFoundException e) {
-                return "CleanYourTV UI";
+                return "Clean Your TV Master";
             }
         }
 
@@ -959,6 +1045,12 @@ public class SettingsActivity extends Activity {
             } else if (focus == 5) {
                 // A release APK comes without a key: it is typed here once (or pushed in config.json "tmdb_key").
                 if (Tmdb.hasKey()) activity.startActivity(new Intent(c, TmdbLoginActivity.class)); else askTmdbKey();
+            } else if (focus == 6) {
+                linkStremio();
+                return;
+            } else if (focus == 7) {
+                chooseHomeCategory();
+                return;
             } else {
                 activity.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             }

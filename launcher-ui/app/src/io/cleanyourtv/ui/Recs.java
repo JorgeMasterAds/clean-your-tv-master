@@ -45,6 +45,8 @@ final class Recs {
         String kind;            // "movie" or "tv"
         String title, backdrop, meta = "", app, pkg;
         boolean detailed;
+        String trailer;         // YouTube id of the trailer (the "Trailers" category opens it in SmartTube)
+        String imdb, video;     // Stremio library ids (continue watching opens the exact episode)
         boolean cont;           // from the Stremio library ("Continue watching"), shown first
         float progress;         // how far in (0..1), for the bar under the title
         boolean localized;      // the title reads in the TV's language (not saved: it only orders a fresh list)
@@ -125,6 +127,7 @@ final class Recs {
         context = c;
         cache = c.getSharedPreferences("recs", Context.MODE_PRIVATE);
         if (cache.getInt("version", 0) != CACHE_VERSION) cache.edit().clear().putInt("version", CACHE_VERSION).apply();
+        categoryId = cache.getString("category", "trailers");
         try {
             String saved = cache.getString("picks", null);
             if (saved != null) picks = parse(new JSONArray(saved));
@@ -194,6 +197,8 @@ final class Recs {
     List<Pick> all(String kind) {
         List<Pick> list = new ArrayList<>();
         if (!hasKey(context)) return list;    // no TMDB key: no recommendations
+        if ("cont".equals(kind)) return new ArrayList<>(continuing);   // the Continue tab: up to 5, from Stremio
+        if ("cat".equals(kind)) return category(category());           // the category picked in the selector
         Map<String, Boolean> have = new HashMap<>();   // one look per app, not per title (this runs every 15 s)
         for (Pick p : picks) {
             if ((kind == null || kind.equals(p.kind))
@@ -204,15 +209,13 @@ final class Recs {
         // Three new ones per hour first, never two from the same franchise ("Law & Order" and "Law & Order: Special…").
         List<Pick> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
-        // What you were watching in Stremio comes first (movies or shows, by the tab).
-        for (Pick p : continuing) {
-            if ((kind == null || kind.equals(p.kind)) && seen.add(franchise(p.title))) out.add(p);
-        }
+        // What you were watching in Stremio has its own tab (Continue): not repeated here.
+        for (Pick p : continuing) seen.add(franchise(p.title));
         for (int i = 0; i < list.size(); i++) {
             Pick p = list.get((int) ((hour * 3 + i) % list.size()));
             if (seen.add(franchise(p.title))) out.add(p);
         }
-        int cap = 10 + (int) out.stream().filter(p -> p.cont).count();   // 10 suggestions per tab, after what you were watching
+        int cap = 10;   // 10 suggestions per tab
         return out.size() > cap ? new ArrayList<>(out.subList(0, cap)) : out;
     }
 
@@ -222,6 +225,170 @@ final class Recs {
         int cut = t.indexOf(':');
         if (cut < 0) cut = t.indexOf(" - ");
         return (cut > 0 ? t.substring(0, cut) : t).trim();
+    }
+
+    // MARK: - Categories (the selector on the last tab, like Stremio's)
+
+    /** id, name, movie query, show query (null = none). Queries go to /discover; "trending/..." to that list. */
+    static final String[][] CATEGORIES = {
+            {"trailers", "Trailers novos", "primary_release_date.gte=@+0&primary_release_date.lte=@+120&vote_count.gte=0", null},
+            {"top10", "Top 10 hoje", "trending/all/day", null},
+            {"popular", "Populares da semana", "trending/all/week", null},
+            {"netflix", "Top 10 Netflix", "with_watch_providers=8", "with_watch_providers=8"},
+            {"prime", "Top 10 Prime Video", "with_watch_providers=119", "with_watch_providers=119"},
+            {"disney", "Top 10 Disney+", "with_watch_providers=337", "with_watch_providers=337"},
+            {"max", "Top 10 HBO Max", "with_watch_providers=1899", "with_watch_providers=1899"},
+            {"globoplay", "Top 10 Globoplay", "with_watch_providers=307", "with_watch_providers=307"},
+            {"apple", "Top 10 Apple TV+", "with_watch_providers=350", "with_watch_providers=350"},
+            {"new", "Novidades", "primary_release_date.gte=@-150&vote_count.gte=40", "first_air_date.gte=@-150&vote_count.gte=20"},
+            {"rated8", "Nota 8+", "vote_average.gte=8&vote_count.gte=800", "vote_average.gte=8&vote_count.gte=400"},
+            {"rated85", "Nota 8,5+", "vote_average.gte=8.5&vote_count.gte=300", "vote_average.gte=8.5&vote_count.gte=200"},
+            {"marvel", "Marvel", "with_companies=420", "with_companies=420|38679"},
+            {"dc", "DC", "with_companies=128064|9993", "with_companies=128064|9993"},
+            {"anime", "Anime", "with_genres=16&with_original_language=ja", "with_genres=16&with_original_language=ja"},
+            {"action", "Ação", "with_genres=28", "with_genres=10759"},
+            {"comedy", "Comédia", "with_genres=35", "with_genres=35"},
+            {"horror", "Terror", "with_genres=27", null},
+            {"scifi", "Ficção científica", "with_genres=878", "with_genres=10765"},
+            {"thriller", "Suspense", "with_genres=53", "with_genres=9648"},
+            {"crime", "Crime", "with_genres=80", "with_genres=80"},
+            {"drama", "Drama", "with_genres=18", "with_genres=18"},
+            {"romance", "Romance", "with_genres=10749", null},
+            {"docs", "Documentários", "with_genres=99", "with_genres=99"},
+            {"korea", "Séries coreanas", null, "with_origin_country=KR"},
+            {"brazil", "Nacionais", "with_origin_country=BR", "with_origin_country=BR"},
+    };
+    private static volatile String categoryId = "trailers";
+    private final Map<String, List<Pick>> categoryPicks = new HashMap<>();
+    private final Map<String, Long> categoryAt = new HashMap<>();
+    private final java.util.Set<String> categoryLoading = new java.util.HashSet<>();
+
+    static String category() {
+        return categoryId;
+    }
+
+    static String categoryLabel() {
+        for (String[] c : CATEGORIES) if (c[0].equals(categoryId)) return c[1];
+        return CATEGORIES[0][1];
+    }
+
+    void setCategory(String id) {
+        categoryId = id;
+        cache.edit().putString("category", id).apply();
+    }
+
+    /** The category's 10 titles (empty while they load: the listeners hear when they are ready). */
+    List<Pick> category(String id) {
+        synchronized (categoryPicks) {
+            List<Pick> have = categoryPicks.get(id);
+            Long at = categoryAt.get(id);
+            boolean stale = at == null || System.currentTimeMillis() - at > LIST_EVERY;
+            if (stale && categoryLoading.add(id)) io.execute(() -> fetchCategory(id));
+            return have == null ? new ArrayList<>() : new ArrayList<>(have);
+        }
+    }
+
+    /** The YouTube id of the title's trailer: in the TV's language first, then in English (or null). */
+    private String trailerOf(Pick p) {
+        for (String l : new String[] {lang(), "en-US"}) {
+            try {
+                JSONArray v = get("/" + p.kind + "/" + p.id + "/videos?language=" + l).optJSONArray("results");
+                String teaser = null;
+                for (int i = 0; v != null && i < v.length(); i++) {
+                    JSONObject o = v.getJSONObject(i);
+                    if (!"YouTube".equals(o.optString("site"))) continue;
+                    if ("Trailer".equals(o.optString("type"))) return o.optString("key");
+                    if (teaser == null && "Teaser".equals(o.optString("type"))) teaser = o.optString("key");
+                }
+                if (teaser != null) return teaser;
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
+    }
+
+    private void fetchCategory(String id) {
+        String[] def = null;
+        for (String[] c : CATEGORIES) if (c[0].equals(id)) def = c;
+        try {
+            if (def == null) return;
+            boolean trailers = id.equals("trailers"), anime = id.equals("anime");
+            List<JSONObject> found = new ArrayList<>();
+            List<String> kinds = new ArrayList<>();
+            String region = Tmdb.region();
+            if (def[2] != null && def[2].startsWith("trending/")) {
+                JSONArray r = get("/" + def[2] + "?language=" + lang()).getJSONArray("results");
+                for (int i = 0; i < r.length(); i++) {
+                    JSONObject o = r.getJSONObject(i);
+                    String mt = o.optString("media_type");
+                    if (mt.equals("movie") || mt.equals("tv")) { found.add(o); kinds.add(mt); }
+                }
+            } else {
+                for (int t = 0; t < 2; t++) {
+                    String q = def[2 + t];
+                    if (q == null) continue;
+                    String kind = t == 0 ? "movie" : "tv";
+                    q = q.replace("@-150", day(-150)).replace("@+0", day(0)).replace("@+120", day(120));
+                    String url = "/discover/" + kind + "?language=" + lang() + "&watch_region=" + region + "&include_adult=false&sort_by=popularity.desc"
+                            + (q.contains("vote_count") ? "" : "&vote_count.gte=" + (kind.equals("movie") ? 150 : 60))
+                            + (anime ? "&without_genres=10751,10762" : "&without_genres=16,10751,10762,10763,10764,10767")
+                            + (trailers ? "" : kind.equals("movie") ? "&primary_release_date.gte=2015-01-01" : "&first_air_date.gte=2018-01-01")
+                            + "&" + q.replace("|", "%7C");
+                    JSONArray r = get(url).getJSONArray("results");
+                    for (int i = 0; i < r.length(); i++) { found.add(r.getJSONObject(i)); kinds.add(kind); }
+                }
+            }
+            // Movies and shows by popularity, the 10 most watched (no kids or family titles, nothing without a photo).
+            List<Integer> order = new ArrayList<>();
+            for (int i = 0; i < found.size(); i++) order.add(i);
+            order.sort((a, b) -> Double.compare(found.get(b).optDouble("popularity"), found.get(a).optDouble("popularity")));
+            List<Pick> out = new ArrayList<>();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (int i : order) {
+                if (out.size() >= 10) break;
+                JSONObject o = found.get(i);
+                JSONArray g = o.optJSONArray("genre_ids");
+                boolean kids = false;
+                for (int j = 0; g != null && j < g.length(); j++) {
+                    int gi = g.optInt(j);
+                    kids |= gi == 10751 || gi == 10762 || (gi == 16 && !anime);
+                }
+                if (kids) continue;
+                List<Pick> one = new ArrayList<>();
+                add(one, o, kinds.get(i));
+                if (one.isEmpty() || !seen.add(key(one.get(0)))) continue;
+                Pick p = one.get(0);
+                try {
+                    fetchDetails(p);
+                } catch (Exception e) {
+                    continue;
+                }
+                if (trailers) {   // coming soon: the trailer plays in SmartTube (YouTube)
+                    p.trailer = trailerOf(p);
+                    if (p.trailer == null) continue;
+                    String date = o.optString("release_date", "");
+                    String when = date.length() == 10 ? date.substring(8, 10) + "/" + date.substring(5, 7) + "/" + date.substring(0, 4) : "";
+                    p.meta = "Trailer" + (when.isEmpty() ? "" : " · estreia " + when);
+                    p.pkg = DeepLinks.SMARTTUBE;
+                    p.app = "SmartTube";
+                } else if (p.pkg == null) {   // not on the TV's services: Stremio plays it
+                    p.pkg = DeepLinks.STREMIO;
+                    p.app = "Stremio";
+                    p.meta = p.meta.isEmpty() ? "Stremio" : p.meta + " · Stremio";
+                }
+                out.add(p);
+            }
+            synchronized (categoryPicks) {
+                categoryPicks.put(id, out);
+                categoryAt.put(id, System.currentTimeMillis());
+            }
+            notifyListeners();
+        } catch (Exception e) {
+            AppLog.w("category " + id + ": " + e.getMessage());
+            synchronized (categoryPicks) { categoryAt.put(id, System.currentTimeMillis() - LIST_EVERY + 60_000L); }   // again in a minute
+        } finally {
+            synchronized (categoryPicks) { categoryLoading.remove(id); }
+        }
     }
 
     /** Name of the service the pick is on ("Netflix"), or empty. */
@@ -293,10 +460,15 @@ final class Recs {
             List<JSONObject> going = new ArrayList<>();
             for (int i = 0; i < items.length(); i++) {
                 JSONObject it = items.getJSONObject(i), st = it.optJSONObject("state");
-                if (it.optBoolean("removed") || st == null || !it.optString("_id").startsWith("tt")) continue;
+                // Stremio keeps "removed + temp" items in its own Continue watching row: they count too.
+                if ((it.optBoolean("removed") && !it.optBoolean("temp")) || st == null || !it.optString("_id").startsWith("tt")) continue;
                 String type = it.optString("type");
                 if (!type.equals("movie") && !type.equals("series")) continue;
-                boolean started = st.optLong("timeOffset") > 0 || (type.equals("series") && !st.optString("video_id").isEmpty());
+                long d0 = st.optLong("duration"), o0 = st.optLong("timeOffset");
+                // A trailer or a broken stream (under 5 min) and a finished movie are not "continue watching".
+                if (d0 > 0 && d0 < 5 * 60_000L) continue;
+                if (type.equals("movie") && (st.optInt("flaggedWatched") == 1 || (d0 > 0 && o0 > d0 * 0.92))) continue;
+                boolean started = o0 > 0 || (type.equals("series") && !st.optString("video_id").isEmpty());
                 if (started && !st.optString("lastWatched").isEmpty()) going.add(it);
             }
             going.sort((a, b) -> b.optJSONObject("state").optString("lastWatched").compareTo(a.optJSONObject("state").optString("lastWatched")));
@@ -318,9 +490,13 @@ final class Recs {
                     String[] v = st.optString("video_id").split(":");
                     if (!movie && v.length == 3) ep = " · T" + v[1] + " E" + v[2];
                     long dur = st.optLong("duration"), off = st.optLong("timeOffset");
-                    String left = dur > 0 && off > 0 ? " · faltam " + Math.max(1, (dur - off) / 60000) + " min" : "";
+                    boolean done = dur > 0 && off > dur * 0.92;   // episode over: Stremio moves on to the next one
+                    String left = done ? " · próximo episódio"
+                            : dur > 0 && off > 0 ? " · faltam " + Math.max(1, Math.round((dur - off) / 60000.0)) + " min" : "";
                     p.meta = (ep.isEmpty() ? "Filme" : "Série" + ep) + left;
-                    p.progress = dur > 0 ? Math.max(0, Math.min(1, off / (float) dur)) : 0;
+                    p.progress = dur > 0 && !done ? Math.max(0, Math.min(1, off / (float) dur)) : 0;
+                    p.imdb = imdb;
+                    p.video = st.optString("video_id");
                     p.pkg = DeepLinks.STREMIO;
                     p.app = "Stremio";
                     p.detailed = true;

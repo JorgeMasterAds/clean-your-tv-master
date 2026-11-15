@@ -87,6 +87,7 @@ final class DeepLinks {
     }
 
     static final String STREMIO = "com.stremio.one";
+    static final String SMARTTUBE = "org.smarttube.stable";
 
     /**
      * A poster or banner picked on Home or in Explore: straight to the title's page in Stremio (IMDb id from TMDB),
@@ -109,6 +110,20 @@ final class DeepLinks {
                     ? "stremio:///detail/" + (kind.equals("movie") ? "movie" : "series") + "/" + imdb + "/" + imdb : null;
             main.post(() -> { if (!open(c, STREMIO, url)) DetailActivity.open(c, kind, id); });
         }).start();
+    }
+
+    /** A Home pick: one from the Stremio library opens right where it stopped (the episode, for a series). */
+    static void openPick(Context c, Recs.Pick p) {
+        if (p.trailer != null) {   // a trailer: SmartTube, else any YouTube app
+            String url = "https://www.youtube.com/watch?v=" + p.trailer;
+            if (open(c, SMARTTUBE, url) || open(c, "com.google.android.youtube.tv", url)) return;
+        }
+        if (p.cont && p.imdb != null && p.imdb.startsWith("tt")) {
+            boolean movie = "movie".equals(p.kind);
+            String video = p.video != null && !p.video.isEmpty() ? p.video : p.imdb;
+            if (open(c, STREMIO, "stremio:///detail/" + (movie ? "movie" : "series") + "/" + p.imdb + "/" + video)) return;
+        }
+        openTitle(c, p.kind, p.id);
     }
 
     /** Opens the title in the app when there's a link it takes; otherwise false (the caller opens the app). */
