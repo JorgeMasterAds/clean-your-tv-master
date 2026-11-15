@@ -12,18 +12,20 @@ Grátis e de código aberto. Baixe o APK em **[Releases](../../releases)**.
 
 - **Início em tela cheia**: a foto do título em destaque ocupa a tela; troca sozinha a cada 8 segundos, com até 10
   bolinhas para navegar. Relógio, clima e atalhos no topo.
-- **Abas**: Explorar, **Continuar**, Filmes, Séries e uma aba de **Categorias** com seletor.
+- **Abas**: Explorar, **Continuar**, Filmes e Séries, com um **seletor de categoria** logo abaixo
+  (`‹ Top 10 hoje ›`): as setas trocam a lista e, no fim de uma, a próxima entra sozinha.
 - **Continuar assistindo (Stremio)**: até 5 títulos da sua conta do Stremio, com barra de onde você parou e o tempo
   que falta. OK abre direto no Stremio, no episódio certo. Trailers e filmes já terminados não entram.
-- **Categorias** (OK na última aba): Trailers novos, Top 10 hoje, Populares da semana, Top 10 Netflix, Prime Video,
-  Disney+, HBO Max, Globoplay e Apple TV+, Novidades, Nota 8+, Nota 8,5+, Marvel, DC, Anime, Ação, Comédia, Terror,
-  Ficção científica, Suspense, Crime, Drama, Romance, Documentários, Séries coreanas e Nacionais.
-- **Trailers novos**: as estreias dos próximos meses; OK toca o trailer no SmartTube (ou no YouTube).
+- **Categorias**: Trailers novos, Top 10 hoje, Em alta na semana, Em alta na Netflix, no Prime Video, no Disney+ e na
+  HBO Max, Novidades, Nota 8+, Nota 8,5+, Marvel, DC e Anime. Dados do TMDB, atualizados a cada 6 horas
+  ("Em alta na Netflix" = os títulos mais populares que estão na Netflix do seu país, não o Top 10 oficial da Netflix).
+- **Trailers novos**: as estreias dos próximos 4 meses; OK toca o trailer no SmartTube (ou no YouTube).
 - **Sem infantil e sem coisa velha** nas sugestões: só títulos bem avaliados e recentes.
 - **Botões do controle**: troque Netflix, Prime Video, YouTube, Globoplay, Disney+ e outros para abrir o app ou a
   entrada HDMI que você quiser, de dentro de qualquer app (testado em TV TCL).
-- **Configurações em vermelho**, com tudo o que a tela tem: Conta Stremio (liga pelo celular com um código, sem
-  digitar senha na TV), Categoria da Início, Conta TMDB, Prateleira, Botões do Controle, Tela de Descanso.
+- **Configurações** em preto e vermelho animado, com um painel que explica cada opção: Conta Stremio (liga pelo
+  celular com um código, sem senha na TV), Categoria da Início e **Abas e Stremio** (liga/desliga Continuar e
+  categorias, onde os títulos abrem, app dos trailers, tempo do destaque, títulos por aba, infantil, saudação).
 - **Limpeza da TV**: listas por modelo para tirar anúncios e apps de fábrica, com backup e como desfazer
   ([`README.cleanyourtv.md`](README.cleanyourtv.md)).
 
