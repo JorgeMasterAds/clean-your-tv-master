@@ -448,7 +448,7 @@ public class SettingsActivity extends Activity {
                 {"De quanto em quanto tempo o destaque passa para o próximo título sozinho.", "How often the hero moves on to the next title by itself."},
                 {"Quantos títulos cada aba mostra (o Continuar mostra até 5).", "How many titles each tab shows (Continue shows up to 5)."},
                 {"Filmes e séries infantis ficam fora das sugestões e das categorias.", "Kids movies and shows stay out of the picks and the categories."},
-                {"O nome depois de \"Bem-vindo\" no topo da Início. OK para mudar.", "The name after \"Welcome\" at the top of Home. OK to change it."},
+                {"A saudação muda com a hora (bom dia, boa tarde, boa noite, boa madrugada) e chama você pelo nome. OK para mudar o nome.", "The name after \"Welcome\" at the top of Home. OK to change it."},
         };
 
         /** What the focused option does, and how it is now; the TMDB status and credit at the bottom. */
@@ -537,7 +537,7 @@ public class SettingsActivity extends Activity {
                     every <= 0 ? Ui.tr("Não trocar", "Never") : every + " s",
                     String.valueOf(Prefs.perTab()),
                     Prefs.noKids() ? Ui.tr("Esconder", "Hide") : Ui.tr("Mostrar", "Show"),
-                    name.isEmpty() ? Ui.tr("Bem-vindo", "Welcome") : Ui.tr("Bem-vindo ", "Welcome ") + name};
+                    HomeView.greeting(name)};
         }
 
         private static int next(int[] all, int now, int dir) {
@@ -575,7 +575,7 @@ public class SettingsActivity extends Activity {
             EditText field = new EditText(activity);
             field.setSingleLine(true);
             field.setText(Prefs.greetName());
-            field.setHint(Ui.tr("Seu nome (vazio = só \"Bem-vindo\")", "Your name (empty = just \"Welcome\")"));
+            field.setHint(Ui.tr("Seu nome (vazio = só \"Bom dia\")", "Your name (empty = just \"Good morning\")"));
             new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                     .setTitle(Ui.tr("Nome na saudação", "Name in the greeting"))
                     .setView(field)

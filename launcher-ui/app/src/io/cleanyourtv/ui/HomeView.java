@@ -109,6 +109,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** Tabs: Explore, Continue (Stremio), Movies, Shows and the category picked in the selector. */
     private static final int NT = 5, CAT_TAB = 4;
 
+    /** "Bom dia, Master": by the TV's clock (madrugada 0-5, dia 5-12, tarde 12-18, noite 18-24) and the name in Settings. */
+    static String greeting(String name) {
+        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        String g = h < 5 ? Ui.tr("Boa madrugada", "Good night") : h < 12 ? Ui.tr("Bom dia", "Good morning")
+                : h < 18 ? Ui.tr("Boa tarde", "Good afternoon") : Ui.tr("Boa noite", "Good evening");
+        return name == null || name.isEmpty() ? g : g + ", " + name;
+    }
+
     /** Continue and Categories can be turned off in Settings › Tabs and Stremio. */
     private static boolean tabOn(int i) {
         return i == 1 ? Prefs.tabCont() : i == CAT_TAB ? Prefs.tabCat() : true;
@@ -3121,7 +3129,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             return;
         }
         String name = Prefs.greetName();
-        String hello = name.isEmpty() ? Ui.tr("Bem-vindo", "Welcome") : Ui.tr("Bem-vindo ", "Welcome ") + name;
+        String hello = greeting(name);
         float helloX = Ui.he ? CONTENT_R * k - lTitle.measureText(hello) : MARGIN * k - Ui.leftBearing(lTitle, hello);
         c.drawText(hello, helloX, L_TITLE_BASE * k, lTitle);
         // Text tabs (the selected one in bold, in the main text color); with focus on the tabs, the selected one gets
