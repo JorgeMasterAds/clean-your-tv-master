@@ -256,6 +256,9 @@ final class Prefs {
     static void setPerTab(int n) { sp().edit().putInt("perTab", n).apply(); version++; }
     static String greetName() { return sp().getString("greetName", "Master"); }
     static void setGreetName(String v) { put("greetName", v == null ? "" : v.trim()); }
+    /** Animated space backdrop on Home: 2 animated (nebula, focus aura), 1 soft (stars only), 0 off. */
+    static int cosmos() { return sp().getInt("cosmos", 2); }
+    static void setCosmos(int n) { sp().edit().putInt("cosmos", n).apply(); version++; }
     static boolean noKids() { return sp().getBoolean("noKids", true); }
     static void setNoKids(boolean on) { put("noKids", on); }
 

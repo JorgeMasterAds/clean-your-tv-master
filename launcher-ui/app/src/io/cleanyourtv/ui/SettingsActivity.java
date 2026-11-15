@@ -435,7 +435,7 @@ public class SettingsActivity extends Activity {
                 case 5: return new String[] {Ui.tr("Conta TMDB", "TMDB account"), Ui.tr("A chave grátis do TMDB traz as fotos, as sugestões, as categorias e os trailers.", "The free TMDB key brings the photos, picks, categories and trailers."), account()};
                 case 6: return new String[] {Ui.tr("Conta Stremio", "Stremio account"), Ui.tr("Liga a aba Continuar: o que você estava vendo no Stremio, com a barra de onde parou. Sem senha na TV: aparece um código para abrir no celular.", "Turns on the Continue tab: what you were watching in Stremio, with where you stopped. No password on the TV: a code to open on your phone."), stremioState()};
                 case 7: return new String[] {Ui.tr("Categoria inicial", "Home category"), Ui.tr("A lista que a fileira de categorias mostra primeiro. Na Início, é só andar pela fileira abaixo das abas.", "The list the category row shows first. On Home, just walk along the row under the tabs."), Recs.categoryLabel()};
-                case 8: return new String[] {Ui.tr("Abas e reprodução", "Tabs and Stremio"), Ui.tr("Ligue ou desligue as abas, escolha onde os títulos abrem, o app dos trailers, a troca do destaque, quantos títulos por aba, infantil e a saudação.", "Turn tabs on or off, pick where titles open, the trailer app, the hero timing, titles per tab, kids titles and the greeting."), ""};
+                case 8: return new String[] {Ui.tr("Abas e reprodução", "Tabs and Stremio"), Ui.tr("Ligue ou desligue as abas, escolha onde os títulos abrem, o app dos trailers, a troca do destaque, quantos títulos por aba, infantil, a saudação e o fundo cósmico.", "Turn tabs on or off, pick where titles open, the trailer app, the hero timing, titles per tab, kids titles and the greeting."), ""};
                 default: return new String[] {Ui.tr("Configurações do Android", "TV Settings"), Ui.tr("As configurações do Android TV: rede, som, imagem e apps.", "Android TV's own settings: network, sound, picture and apps."), ""};
             }
         }
@@ -449,6 +449,7 @@ public class SettingsActivity extends Activity {
                 {"Quantos títulos cada aba mostra (o Continuar mostra até 5).", "How many titles each tab shows (Continue shows up to 5)."},
                 {"Filmes e séries infantis ficam fora das sugestões e das categorias.", "Kids movies and shows stay out of the picks and the categories."},
                 {"A saudação muda com a hora (bom dia, boa tarde, boa noite, boa madrugada) e chama você pelo nome. OK para mudar o nome.", "The name after \"Welcome\" at the top of Home. OK to change it."},
+                {"Estrelas piscando, nebulosa vermelha em movimento e um anel colorido girando no que está em foco. Suave deixa só as estrelas.", "Twinkling stars, a drifting red nebula and a spinning ring of colour on the focus. Soft keeps only the stars."},
         };
 
         /** What the focused option does, and how it is now; the TMDB status and credit at the bottom. */
@@ -518,7 +519,7 @@ public class SettingsActivity extends Activity {
             return new String[] {Ui.tr("Aba Continuar (Stremio)", "Continue tab (Stremio)"), Ui.tr("Fileira de categorias", "Category row"),
                     Ui.tr("Abrir filmes e séries em", "Open movies and shows in"), Ui.tr("Trailers tocam em", "Trailers play in"),
                     Ui.tr("Trocar o destaque a cada", "Next hero title every"), Ui.tr("Títulos por aba", "Titles per tab"),
-                    Ui.tr("Infantil nas sugestões", "Kids titles in picks"), Ui.tr("Nome na saudação", "Name in the greeting")};
+                    Ui.tr("Infantil nas sugestões", "Kids titles in picks"), Ui.tr("Nome na saudação", "Name in the greeting"), Ui.tr("Fundo cósmico", "Space backdrop")};
         }
 
         private static final String[] TRAILER_APPS = {"", DeepLinks.SMARTTUBE, "com.google.android.youtube.tv"};
@@ -537,7 +538,8 @@ public class SettingsActivity extends Activity {
                     every <= 0 ? Ui.tr("Não trocar", "Never") : every + " s",
                     String.valueOf(Prefs.perTab()),
                     Prefs.noKids() ? Ui.tr("Esconder", "Hide") : Ui.tr("Mostrar", "Show"),
-                    HomeView.greeting(name)};
+                    HomeView.greeting(name),
+                    Prefs.cosmos() >= 2 ? Ui.tr("Animado", "Animated") : Prefs.cosmos() == 1 ? Ui.tr("Suave", "Soft") : Ui.tr("Desligado", "Off")};
         }
 
         private static int next(int[] all, int now, int dir) {
@@ -565,6 +567,7 @@ public class SettingsActivity extends Activity {
                 case 4: Prefs.setHeroEvery(next(HERO_EVERY, Prefs.heroEvery(), dir)); break;
                 case 5: Prefs.setPerTab(next(PER_TAB, Prefs.perTab(), dir)); Recs.get(ctx).clearCategories(); break;
                 case 6: Prefs.setNoKids(!Prefs.noKids()); Recs.get(ctx).clearCategories(); break;
+                case 8: Prefs.setCosmos(next(new int[] {2, 1, 0}, Prefs.cosmos(), dir)); break;
                 default: return;
             }
             HomeData.get(ctx).settingsChanged();
