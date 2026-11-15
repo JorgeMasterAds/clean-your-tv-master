@@ -367,7 +367,6 @@ public class SettingsActivity extends Activity {
 
         private final Cosmos cosmos = new Cosmos();
         private float auraT;
-        private Paint redTone;
         private Paint glowPaint, lineTitle, panelTitle;
         private TextPaint panelText;
         private android.graphics.RadialGradient[] glows;
@@ -398,12 +397,6 @@ public class SettingsActivity extends Activity {
                 glowPaint.setShader(glows[i]);
                 c.drawRect(0, 0, W, H, glowPaint);
             }
-            // A thin red line sweeping slowly under the header.
-            if (redTone == null) redTone = new Paint(Paint.ANTI_ALIAS_FLAG);
-            float sweep = (t * 0.08f) % 1.4f - 0.2f;
-            redTone.setShader(new android.graphics.LinearGradient(W * (sweep - 0.25f), 0, W * (sweep + 0.25f), 0,
-                    new int[] {0x00FF2D46, 0xCCFF2D46, 0x00FF2D46}, null, android.graphics.Shader.TileMode.CLAMP));
-            c.drawRect(LIST_X * k, 176 * k, PANEL_R * k, 178 * k, redTone);
         }
 
         /** The logo, the name and the credit, across the top. */
