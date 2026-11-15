@@ -3159,15 +3159,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
         cosPaint.setAlpha(255);
 
-        // Aura: a rotating ring of cosmic colour behind whatever has the focus (a hero card or a dock app).
+        // Aura: a rotating ring of cosmic colour behind whatever has the focus (a dock app).
         if (level >= 2 && !sheetOpen && drawer.value < 0.05f) {
-            for (int i = 0; i < cardRects.length && picksOn(); i++) {
-                float v = cardFocus[i].value;
-                if (v < 0.02f || i >= cards.size()) continue;
-                RectF b = cardRects[i];
-                float s = 1 + 0.05f * v, bw = b.width() * s, bh = b.height() * s, cx = b.centerX(), cy = b.centerY() - 6 * k * v;
-                drawAura(c, cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2, 18 * k * s, Ui.clamp(v), t);
-            }
             float ty = tiles.getTranslationY();
             for (int i = 0; i < tileRects.length && i < tileFocus.length; i++) {
                 float v = tileFocus[i].value;
@@ -3179,7 +3172,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
     }
 
-    private static final float[][] NEBULA_ORBIT = {{0.18f, 0.30f, 0.10f, 0.08f, 0.031f}, {0.62f, 0.82f, 0.12f, 0.06f, 0.023f}, {0.86f, 0.18f, 0.08f, 0.10f, 0.017f}};
+    private static final float[][] NEBULA_ORBIT = {{0.18f, 0.30f, 0.10f, 0.08f, 0.031f}, {0.08f, 0.90f, 0.06f, 0.04f, 0.023f}, {0.34f, 0.04f, 0.10f, 0.04f, 0.017f}};
     private static final float[] AURA_GROW = {5, 10, 17}, AURA_WIDTH = {4, 6, 8};
     private static final int[] AURA_ALPHA = {235, 95, 38};
 

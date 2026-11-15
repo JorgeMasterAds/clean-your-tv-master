@@ -327,6 +327,9 @@ public class SettingsActivity extends Activity {
                 scene.advance(seconds);
             }
             drawMasterBackground(c, seconds);
+            cosmos.setSize(w, getHeight(), k);
+            cosmos.drawStars(c, seconds);
+            auraT = seconds;
             drawHeader(c);
             drawPanel(c);
 
@@ -362,12 +365,13 @@ public class SettingsActivity extends Activity {
             }
         }
 
+        private final Cosmos cosmos = new Cosmos();
+        private float auraT;
         private Paint redTone;
         private Paint glowPaint, lineTitle, panelTitle;
         private TextPaint panelText;
         private android.graphics.RadialGradient[] glows;
         private final android.graphics.Matrix glowMatrix = new android.graphics.Matrix();
-        private android.graphics.Bitmap logo;
         private static final String[] MAIN_ICONS = {"bedtime", "home", "apps", "tune", "live_tv", "cloud", "sync", "search", "play", "tv_settings"};
         private static final int GREET_ROW = 7;
 
@@ -404,15 +408,8 @@ public class SettingsActivity extends Activity {
 
         /** The logo, the name and the credit, across the top. */
         private void drawHeader(Canvas c) {
-            if (logo == null) {
-                int id = getResources().getIdentifier("icon", "drawable", getContext().getPackageName());
-                logo = id == 0 ? null : android.graphics.BitmapFactory.decodeResource(getResources(), id);
-            }
             float x = LIST_X * k, top = 52 * k, size = 104 * k;
-            if (logo != null) {
-                tmp.set(x, top, x + size, top + size);
-                c.drawBitmap(logo, null, tmp, null);
-            }
+            cosmos.drawLogo(c, x + size / 2, top + size / 2, size * 1.25f, auraT);
             if (lineTitle == null) {
                 lineTitle = Ui.text(Ui.displaySemibold, 52 * k, 0xFFFFFFFF);
                 lineTitle.setTextAlign(Paint.Align.LEFT);
@@ -420,7 +417,7 @@ public class SettingsActivity extends Activity {
             float tx = x + size + 30 * k;
             c.drawText("Clean Your TV Master", tx, top + 58 * k, lineTitle);
             version.setTextAlign(Paint.Align.LEFT);
-            c.drawText(Ui.tr("Criado por Jorge Master", "Made by Jorge Master") + "  ·  " + versionName(getContext())
+            c.drawText(Ui.tr("Criado por Jorge Master", "Made by Jorge Master") + "  ·  " + versionName(getContext()).replace("Clean Your TV Master ", Ui.tr("versão ", "version "))
                     + "  ·  github.com/JorgeMasterAds/clean-your-tv-master", tx, top + 98 * k, version);
             version.setTextAlign(Paint.Align.CENTER);
         }
@@ -704,6 +701,8 @@ public class SettingsActivity extends Activity {
                 shadow.setColor(Ui.alpha(0xFF000000, 0.4f * f));
                 c.drawRoundRect(tmp, r, r, shadow);
                 tmp.offset(0, -10 * k * f);
+                cosmos.drawAura(c, tmp, r, f, auraT);
+                white.setShader(new android.graphics.LinearGradient(tmp.left, tmp.top, tmp.right, tmp.bottom, 0xFFE0142C, 0xFF6E0010, android.graphics.Shader.TileMode.CLAMP));
                 white.setAlpha(Math.round(255 * f));
                 c.drawRoundRect(tmp, r, r, white);
                 rowRect.set(tmp);
