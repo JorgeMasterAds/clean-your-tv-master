@@ -2953,7 +2953,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         heroDirty = true;
     }
 
-    private Paint heroTitle, heroMeta, heroHint, heroInfo, heroClock;
+    private Paint heroTitle, heroMeta, heroHint, heroInfo, heroClock, heroBadge;
 
     /** Header, right of the tabs: the time and the weather, small (they used to fill the middle of the screen). */
     private void drawHeaderInfo(Canvas c) {
@@ -3002,15 +3002,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (p.cont) {
             // "Continue watching" badge above the title, so it never reads like a suggestion.
             String badge = "CONTINUAR ASSISTINDO";
-            heroHint.setColor(0xFF111111);
-            float bw = heroHint.measureText(badge) + 36 * k, bh = 44 * k, top = 418 * k;
+            if (heroBadge == null) heroBadge = Ui.text(Ui.semibold, 17 * k, 0xFFFFFFFF);
+            float bw = heroBadge.measureText(badge) + 24 * k, bh = 30 * k, top = 432 * k;
             fill.setShader(null);
-            fill.setColor(0xFF7B5CFF);   // Stremio purple
+            fill.setColor(0xFFE50914);   // red
             tmp.set(x, top, x + bw, top + bh);
-            c.drawRoundRect(tmp, bh / 2, bh / 2, fill);
-            heroHint.setColor(0xFFFFFFFF);
-            c.drawText(badge, x + 18 * k, top + bh / 2 + Ui.halfCap(heroHint), heroHint);
-            heroHint.setColor(0xB3FFFFFF);
+            c.drawRoundRect(tmp, 6 * k, 6 * k, fill);
+            c.drawText(badge, x + 12 * k, top + bh / 2 + Ui.halfCap(heroBadge), heroBadge);
         }
         fitPaint.set(heroTitle);
         String title = TextUtils.ellipsize(p.title, fitPaint, maxW, TextUtils.TruncateAt.END).toString();
@@ -3026,7 +3024,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             fill.setColor(0x4DFFFFFF);
             tmp.set(x, py, x + pw, py + ph);
             c.drawRoundRect(tmp, ph / 2, ph / 2, fill);
-            fill.setColor(0xFF7B5CFF);
+            fill.setColor(0xFFE50914);
             tmp.set(x, py, x + pw * p.progress, py + ph);
             c.drawRoundRect(tmp, ph / 2, ph / 2, fill);
         }
