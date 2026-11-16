@@ -132,6 +132,7 @@ final class Games {
                     HomeData.get(a).settingsChanged();
                     Toast.makeText(a, Ui.tr("Conectado a " + pc + ". Os jogos aparecem na aba Jogos e no dock.",
                             "Connected to " + pc + ". The games show in the Games tab and the dock."), Toast.LENGTH_LONG).show();
+                    MAIN.postDelayed(() -> askOverlay(a), 3500);
                     if (done != null) done.run();
                 });
             } catch (Exception e) {
@@ -139,6 +140,26 @@ final class Games {
                 MAIN.post(() -> Toast.makeText(a, Ui.tr("Não conectou: ", "Didn't connect: ") + e.getMessage(), Toast.LENGTH_LONG).show());
             }
         }).start();
+    }
+
+    /**
+     * When the game closes, the TV comes back Home from the PC's input: Android lets the app do that only with
+     * "Display over other apps". Asked once here, on the TV itself (no computer needed).
+     */
+    static void askOverlay(Activity a) {
+        if (android.os.Build.VERSION.SDK_INT < 23 || android.provider.Settings.canDrawOverlays(a)) return;
+        Toast.makeText(a, Ui.tr("Para a TV voltar sozinha à Início quando o jogo fechar, permita \"Sobrepor a outros apps\" para o Clean Your TV Master.",
+                "So the TV comes back Home when the game closes, allow \"Display over other apps\" for Clean Your TV Master."), Toast.LENGTH_LONG).show();
+        try {
+            a.startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:" + a.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (RuntimeException e) {   // some TVs hide that screen: Settings › Apps › Special app access
+            try {
+                a.startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.parse("package:" + a.getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (RuntimeException ignored) {
+            }
+        }
     }
 
     /** The PC's screens, [model id, name], for Settings › Tela do computador (null when the PC doesn't answer). */

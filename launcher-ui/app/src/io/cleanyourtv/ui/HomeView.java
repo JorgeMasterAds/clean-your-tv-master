@@ -3354,6 +3354,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         android.graphics.ColorFilter v = picksOn() ? null
                 : veil(tone(0.32f, 0.42f) * Ui.clamp(drawer.value), blend(0xFFFFFFFF, 0xFF000000, night));
         if (bgTo == null || (fading && bgFrom == null)) {
+            float night = dark();   // the full-screen photo Home waits on black, so the photo never fades in from white
             if (lightGradient == null) lightGradient = new LinearGradient(0, 0, 0, h, 0xFFF5F5F7, 0xFFE2E2E7, Shader.TileMode.CLAMP);
             if (nightGradient == null) nightGradient = new LinearGradient(0, 0, 0, h, 0xFF1C1C1E, 0xFF0B0B0D, Shader.TileMode.CLAMP);
             fill.setColorFilter(v);

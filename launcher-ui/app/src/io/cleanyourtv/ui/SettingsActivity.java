@@ -444,6 +444,21 @@ public class SettingsActivity extends Activity {
                 {"Qual tela do computador mostra o jogo aberto por esta TV: ela vira a única tela enquanto o jogo roda e tudo volta ao fechar. OK busca as telas do PC.", "Which of the computer's screens shows a game opened from this TV: it becomes the only screen while the game runs, and everything comes back when it closes. OK lists the PC's screens."},
         };
 
+        /**
+         * The remote's buttons work inside other apps only with the app's accessibility service on, which only the
+         * person can switch on: say so and open Accessibility, once per visit while it is off.
+         */
+        private void askKeysService() {
+            String on = Settings.Secure.getString(getContext().getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (on != null && on.contains(getContext().getPackageName() + "/")) return;
+            Toast.makeText(activity, Ui.tr("Para os botões funcionarem dentro dos apps, ligue \"Clean Your TV Master\" em Acessibilidade e volte aqui.",
+                    "For the buttons to work inside apps, turn on \"Clean Your TV Master\" in Accessibility and come back here."), Toast.LENGTH_LONG).show();
+            try {
+                activity.startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (RuntimeException ignored) {
+            }
+        }
+
         /** What the focused option does, and how it is now; the TMDB status and credit at the bottom. */
         private void drawPanel(Canvas c) {
             if (panelTitle == null) {
@@ -1361,6 +1376,7 @@ public class SettingsActivity extends Activity {
                 openShelfEditor();
             } else if (focus == 3) {
                 loadApps();
+                askKeysService();
                 screen = REMOTE_KEYS;
                 focus = 0;
                 keysScroll = 0;
