@@ -3588,7 +3588,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawTrailerButton(c, x, 556 * k, gameTrailerFocus);
         String hint = gameMoving ? Ui.tr("← → para mudar de lugar · OK para soltar", "← → to move · OK to drop")
                 : gameTrailerFocus ? Ui.tr("OK para ver o trailer", "OK to watch the trailer")
-                : Ui.tr("OK para jogar no PC · ↑ trailer · segure OK para mudar de lugar", "OK to play on the PC · ↑ trailer · hold OK to move");
+                : Ui.tr("OK para jogar no PC · ↑ trailer", "OK to play on the PC · ↑ trailer");
         c.drawText(hint, x + 190 * k, 583 * k + Ui.halfCap(heroHint), heroHint);
     }
 

@@ -43,6 +43,7 @@ DEFAULTS = {
     "covers": {},                # "Game name": "https://... or C:\\path\\cover.jpg"
     "search": {},                # "Game name": "name to look its cover up by" (e.g. the English title)
     "names": {},                 # "Name found": "name to show"
+    "titles": {},                # "Name": "name the TV shows" (keeps the game's id, art and covers)
     "hidden": [],                # game names to leave out
 }
 
@@ -839,7 +840,8 @@ def handler(cfg):
                 played = last_played(cfg, items)
                 hours = hours_played(items)
                 items = sorted(items, key=lambda g: (-played.get(g["id"], 0), g["name"].lower()))   # latest played first
-                body = [{"id": g["id"], "name": g["name"], "source": g["source"],
+                titles = cfg.get("titles", {})   # a name to show only ("Starfield 1080p" -> "Starfield"), the game stays the same
+                body = [{"id": g["id"], "name": titles.get(g["name"], g["name"]), "source": g["source"],
                          "cover": bool(make_cover(g, cfg)),   # quick when cached; a new cover is made here
                          "v": int(os.path.getmtime(cover_path(g))) if os.path.exists(cover_path(g)) else 0,
                          "played": played.get(g["id"], 0), "hours": hours.get(g["id"], 0)}
