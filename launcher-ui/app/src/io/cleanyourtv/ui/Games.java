@@ -74,6 +74,39 @@ final class Games {
         }).start();
     }
 
+    /** One game for the dock on the home screen: its cover is already loaded (or null: the name is shown). */
+    static final class Game {
+        final String id, name;
+        final android.graphics.Bitmap cover;
+
+        Game(String id, String name, android.graphics.Bitmap cover) {
+            this.id = id;
+            this.name = name;
+            this.cover = cover;
+        }
+    }
+
+    /** The PC's games with their covers, for the dock under Inputs and Shortcuts; null when the PC doesn't answer. */
+    static void list(java.util.function.Consumer<List<Game>> done) {
+        new Thread(() -> {
+            List<Game> out = null;
+            try {
+                JSONArray list = new JSONArray(request("GET", "/api/games?t=" + token()));
+                out = new ArrayList<>();
+                for (int i = 0; i < list.length(); i++) {
+                    JSONObject g = list.getJSONObject(i);
+                    android.graphics.Bitmap cover = g.optBoolean("cover")
+                            ? Images.fetch(base() + "/api/cover?id=" + g.getString("id") + "&v=" + g.optLong("v") + "&t=" + token()) : null;
+                    out.add(new Game(g.getString("id"), g.getString("name"), cover));
+                }
+            } catch (Exception e) {
+                AppLog.w("games dock: " + e.getMessage());
+            }
+            List<Game> result = out;
+            MAIN.post(() -> done.accept(result));
+        }).start();
+    }
+
     /** Asks the PC to open the game, then shows the PC's HDMI input. */
     static void launch(Activity a, String id, String name) {
         if (id == null) return;
