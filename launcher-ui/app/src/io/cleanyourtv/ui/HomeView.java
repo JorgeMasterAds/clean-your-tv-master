@@ -94,7 +94,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final float L_TALL_W = 320, L_CARD_GAP = 40, L_BUTTON = 68, L_BUTTON_GAP = 20, L_BUTTON_CY = 103;
     private static final float L_PLATTER_TOP = 814, L_TILE_H = 126;
     // Full-screen hero: the dock higher up and the inputs/shortcuts row always shown below it.
-    private static final float HERO_DOCK_TOP = 668, HERO_ROW_SHIFT = 386, HERO_ROW_H = 112;
+    private static final float HERO_DOCK_TOP = 668, HERO_ROW_SHIFT = 386, HERO_ROW_H = 112, HERO_DOCK_DROP = 168;
     private static final float L_DATE_BASE = 330, L_CLOCK_BASE = 540, L_WEATHER_BASE = 626, L_QUOTES_BASE = 694;
     private static final int L_INK = 0xFF1D1D1F, L_DIM = 0xFF6E6E73, L_FAINT = 0xFF8E8E93;
     private static final String[] TABS = {"Explorar", "Filmes", "Séries"};
@@ -105,9 +105,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final String[] TABS_FR = {"Explorer", "Films", "Séries"};
     private static final String[] TABS_TR = {"Keşfet", "Filmler", "Diziler"};
     private static final String[] TABS_HE = {"גילוי", "סרטים", "סדרות"};
-    private static final String[] TAB_KIND = {"cont", null, "movie", "tv", "cat"};
-    /** Tabs: Continue (Stremio), Explore, Movies, Shows and the category picked in the selector. */
-    private static final int NT = 5, CONT_TAB = 0, EXPLORE_TAB = 1, CAT_TAB = 4;
+    private static final String[] TAB_KIND = {"cont", null, "movie", "tv", "games", "cat"};
+    /**
+     * Tabs: Continue (Stremio), Explore, Movies, Shows, Games (the PC's, a grid of their own) and the category picked in
+     * the selector. Paging goes round Continue alone, and round Explore, Movies and Shows together.
+     */
+    private static final int NT = 6, CONT_TAB = 0, EXPLORE_TAB = 1, SHOWS_TAB = 3, GAMES_TAB = 4, CAT_TAB = 5;
 
     /** "Bom dia, Master": by the TV's clock (madrugada 0-5, dia 5-12, tarde 12-18, noite 18-24) and the name in Settings. */
     static String greeting(String name) {
@@ -119,7 +122,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Continue and Categories can be turned off in Settings › Tabs and Stremio. */
     private static boolean tabOn(int i) {
-        return i == CONT_TAB ? Prefs.tabCont() : i == CAT_TAB ? Prefs.tabCat() : true;
+        return i == CONT_TAB ? Prefs.tabCont() : i == CAT_TAB ? Prefs.tabCat() : i == GAMES_TAB ? Games.configured() : true;
     }
 
     /** In the tab bar: the categories have their own row under it, so their tab is never drawn there. */
@@ -637,7 +640,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private String[] tabs() {
         String[] b = Ui.he ? TABS_HE : Ui.ru ? TABS_RU : Ui.es ? TABS_ES : Ui.de ? TABS_DE : Ui.fr ? TABS_FR : Ui.tur ? TABS_TR : Ui.en ? TABS_EN : TABS;
-        return new String[] {Ui.tr("Continuar", "Continue"), b[0], b[1], b[2], Recs.categoryLabel()};
+        return new String[] {Ui.tr("Continuar", "Continue"), b[0], b[1], b[2], Ui.tr("Jogos", "Games"), Recs.categoryLabel()};
     }
 
     @Override public void onData() {
@@ -868,14 +871,18 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float home = 1 - s, top = home * (1 - smoothstep(0, 0.32f, dc));
         float shift = SHIFT * k;
         if (picksOn()) {
-            // Everything on one screen: nothing moves; the inputs/shortcuts row stays shown under the dock.
+            // Everything on one screen: nothing moves; the inputs/shortcuts row waits hidden under the dock and rises
+            // into view when Down is pressed on the dock.
             show(heroLayer, home, 0);
             show(status, home, 0);
-            show(platter, home, 0);
-            show(tiles, home, 0);
-            drawerLayer.setTranslationY(HERO_ROW_SHIFT * k);
-            drawerLayer.setAlpha(home);
-            drawerLayer.setVisibility(home > 0.002f ? VISIBLE : INVISIBLE);
+            // The dock rests at the foot of the screen and rises to make room for the row.
+            float drop = HERO_DOCK_DROP * k * (1 - dc);
+            show(platter, home, drop);
+            show(tiles, home, drop);
+            float ra = home * smoothstep(0.05f, 0.7f, dc);
+            drawerLayer.setTranslationY((HERO_ROW_SHIFT + 36 * (1 - dc)) * k);
+            drawerLayer.setAlpha(ra);
+            drawerLayer.setVisibility(ra > 0.002f ? VISIBLE : INVISIBLE);
             sheetLayer.setVisibility(s > 0.001f || sheetOpen ? VISIBLE : INVISIBLE);
             sheetLayer.setAlpha(s);
             float sc = 1.04f - 0.04f * s;
@@ -2415,6 +2422,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             it = drawerItems.get(drawerIndex);
             r = drawerRects[drawerIndex];
         } else if (zone == Z_TOP) {
+            if (topIndex == GAMES_TAB) {
+                click.open();
+                Games.open(activity);
+                return;
+            }
             if (topIndex < NT) {
                 selectTab(topIndex);
                 return;
@@ -2882,7 +2894,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 if (i >= NT + lightButtons.size() || (i < NT && !picksOn())) return;
                 if (drawerOpen) closeDrawer();
                 topIndex = i;
-                if (i < NT) selectTab(i);
+                if (i < NT && i != GAMES_TAB) selectTab(i);
                 break;
             case Z_CARDS:
                 if (i >= cards.size()) return;
@@ -3005,7 +3017,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         int inTab = Math.max(0, page - tabFirst[tab]);
         for (int t = 0; t < NT; t++) {
-            tabPicks[t] = tabOn(t) ? recs.all(TAB_KIND[t]) : new ArrayList<>();
+            tabPicks[t] = tabOn(t) && t != GAMES_TAB ? recs.all(TAB_KIND[t]) : new ArrayList<>();
             int pages = tabPicks[t].isEmpty() ? 0 : (tabPicks[t].size() + 2) / 3;
             tabFirst[t + 1] = tabFirst[t] + pages;
         }
@@ -3061,8 +3073,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** One page on (1) or back (-1) in the run, into the next or previous tab past its ends, and round. */
     private void turnPage(int d) {
-        if (tabFirst[NT] == 0) return;
-        page = Math.floorMod(page + d, tabFirst[NT]);
+        // Continue goes round by itself; Explore, Movies and Shows go round together (never into Games or Continue).
+        boolean alone = tab == CONT_TAB || tab == CAT_TAB;   // a category's own list goes round inside it too
+        int lo = alone ? tabFirst[tab] : tabFirst[EXPLORE_TAB];
+        int hi = alone ? tabFirst[tab + 1] : tabFirst[SHOWS_TAB + 1];
+        if (hi <= lo) return;
+        page = lo + Math.floorMod(page - lo + d, hi - lo);
         tab = tabOf(page);
         updateCards();
     }
@@ -3501,7 +3517,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     next = Math.max(picksOn() ? 0 : NT, Math.min(NT + 2, next));
                     if (next == topIndex) return true;
                     topIndex = next;
-                    if (topIndex < NT) selectTab(topIndex);   // like Apple TV tabs: focusing a tab selects it
+                    if (topIndex < NT && topIndex != GAMES_TAB) selectTab(topIndex);   // like Apple TV tabs: focusing a tab selects it
+                } else if (dy > 0 && topIndex == GAMES_TAB) {
+                    Games.open(activity);   // Games: down or OK opens the grid of the PC's games
+                    return true;
                 } else if (dy > 0 && topIndex < NT && topIndex != CONT_TAB && chipsOn()) {
                     zone = Z_CHIPS;
                     chipIndex = Recs.categoryIndex();

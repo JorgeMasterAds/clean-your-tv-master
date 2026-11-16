@@ -30,6 +30,7 @@ HOME = os.path.join(os.path.expanduser("~"), ".cleanyourtv")
 CONFIG = os.path.join(HOME, "games-agent.json")
 COVERS = os.path.join(HOME, "game-covers")
 LOG = os.path.join(HOME, "games-agent.log")
+SAVED = os.path.join(HOME, "displays-saved.json")
 
 DEFAULTS = {
     "port": 48500,
@@ -37,6 +38,7 @@ DEFAULTS = {
     "game_dirs": [],             # added to every <drive>:\Games folder found
     "exclude": ["vortex", "uninstall", "desinstalar", "overwolf", "optiscaler", "setup", "redist", "dlss",
                 "riot client", "rockstar games launcher"],
+    "tv_monitor": "",            # the TV's monitor id (e.g. "TOL2881"): the game plays only on it, then the screens come back
     "before_launch": "",         # optional: a shortcut or program run first (e.g. switch the PC's output to the TV)
     "covers": {},                # "Game name": "https://... or C:\\path\\cover.jpg"
     "search": {},                # "Game name": "name to look its cover up by" (e.g. the English title)
@@ -225,8 +227,8 @@ def scan(cfg):
         add({"name": pretty(l["name"]), "source": source, "launch": l["file"]}, os.path.normcase(target) + "|" + args.lower())
     for g in epic_games() + steam_games() + battlenet():
         add(g, g["launch"].lower())
-    for i, g in enumerate(sorted(games, key=lambda g: g["name"].lower())):
-        g["id"] = "g%02d" % i
+    for g in games:   # stable ids: the TV keeps covers by address, so an id must always mean the same game
+        g["id"] = norm(g["name"])
     return sorted(games, key=lambda g: g["name"].lower())
 
 
@@ -339,7 +341,63 @@ def private(addr):
         return False
 
 
+LAUNCHERS = ("\\battle.net\\", "\\riot client\\", "\\epic games\\launcher", "\\overwolf\\", "\\vortex",
+             "\\steam.exe", "steamwebhelper", "\\ubisoft game launcher\\", "rockstar games launcher", "\\nswtl")
+WATCH = {"on": False}
+
+
+def game_running(cfg):
+    import displays
+    dirs = game_dirs(cfg)
+    for p in displays.process_paths():
+        n = os.path.normcase(p)
+        if any(n.startswith(d + "\\") for d in dirs) and not any(x in n for x in LAUNCHERS):
+            return True
+    return False
+
+
+def restore_screens():
+    try:
+        import displays
+        if displays.restore(SAVED):
+            log("screens restored")
+    except Exception as e:
+        log("restore: %s" % e)
+
+
+def watch_game(cfg):
+    """Puts the screens back once the game has closed (or if it never started)."""
+    if WATCH["on"]:
+        return
+    WATCH["on"] = True
+    try:
+        start, seen, gone = time.time(), False, 0
+        while True:
+            time.sleep(10)
+            if game_running(cfg):
+                seen, gone = True, 0
+            elif seen:
+                gone += 1
+                if gone >= 2:
+                    break
+            elif time.time() - start > 240:
+                break
+        restore_screens()
+    finally:
+        WATCH["on"] = False
+
+
 def launch(g, cfg):
+    if cfg.get("tv_monitor"):
+        try:
+            import displays
+            problem = displays.tv_only(cfg["tv_monitor"], SAVED)
+            if problem:
+                log("tv_only: " + problem)
+            else:
+                time.sleep(2)
+        except Exception as e:
+            log("tv_only: %s" % e)
     before = cfg.get("before_launch")
     if before:
         try:
@@ -349,6 +407,8 @@ def launch(g, cfg):
             log("before_launch: %s" % e)
     log("launch %s -> %s" % (g["name"], g["launch"]))
     os.startfile(g["launch"])
+    if cfg.get("tv_monitor"):
+        threading.Thread(target=watch_game, args=(cfg,), daemon=True).start()
 
 
 def handler(cfg):
@@ -379,7 +439,9 @@ def handler(cfg):
                 return self.send(403, b'{"error":"forbidden"}')
             if u.path == "/api/games" and method == "GET":
                 body = [{"id": g["id"], "name": g["name"], "source": g["source"],
-                         "cover": os.path.exists(cover_path(g))} for g in games(cfg, fresh="fresh" in q)]
+                         "cover": os.path.exists(cover_path(g)),
+                         "v": int(os.path.getmtime(cover_path(g))) if os.path.exists(cover_path(g)) else 0}
+                        for g in games(cfg, fresh="fresh" in q)]
                 return self.send(200, json.dumps(body, ensure_ascii=False).encode("utf-8"))
             gid = (q.get("id") or [""])[0]
             g = next((x for x in games(cfg) if x["id"] == gid), None)
@@ -389,6 +451,9 @@ def handler(cfg):
                     return self.send(404, b'{"error":"no cover"}')
                 with open(p, "rb") as f:
                     return self.send(200, f.read(), "image/jpeg")
+            if u.path == "/api/restore" and method == "POST":
+                restore_screens()
+                return self.send(200, b'{"ok":true}')
             if u.path == "/api/launch" and method == "POST":
                 if not g:
                     return self.send(404, b'{"error":"no such game"}')
@@ -424,10 +489,22 @@ def main():
         for g in scan(cfg):
             print("%-5s %-34s %-9s %s" % (g["id"], g["name"], g["source"], g["launch"]))
         return
+    if "--restore" in sys.argv:
+        restore_screens()
+        return
+    if "--displays" in sys.argv:
+        import displays
+        for d in displays.devices():
+            print(d)
+        return
     if "--tv-config" in sys.argv:
         print(json.dumps({"games_pc": {"host": "%s:%d" % (local_ip(), cfg["port"]), "token": cfg["token"], "input": "PC"}}))
         return
     threading.Thread(target=warm_covers, args=(cfg,), daemon=True).start()
+    if os.path.exists(SAVED) and not game_running(cfg):   # the PC was turned off mid-game: screens back first
+        restore_screens()
+    elif os.path.exists(SAVED):
+        threading.Thread(target=watch_game, args=(cfg,), daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", int(cfg["port"])), handler(cfg))
     log("listening on %s:%d" % (local_ip(), cfg["port"]))
     srv.serve_forever()

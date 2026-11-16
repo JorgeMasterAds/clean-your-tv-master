@@ -58,7 +58,7 @@ final class Games {
                 Map<Integer, String> ids = new HashMap<>();
                 for (int i = 0; i < list.length(); i++) {
                     JSONObject g = list.getJSONObject(i);
-                    String cover = g.optBoolean("cover") ? base() + "/api/cover?id=" + g.getString("id") + "&t=" + token() : "";
+                    String cover = g.optBoolean("cover") ? base() + "/api/cover?id=" + g.getString("id") + "&v=" + g.optLong("v") + "&t=" + token() : "";
                     titles.add(new Tmdb.Title("game", i, g.getString("name"), cover, "", g.optString("source"), 0));
                     ids.put(i, g.getString("id"));
                 }
