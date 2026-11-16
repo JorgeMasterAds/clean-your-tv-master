@@ -291,23 +291,41 @@ final class Recs {
         }
     }
 
-    /** The YouTube id of the title's trailer: in the TV's language first, then in English (or null). */
+    /**
+     * The YouTube id of the title's trailer: in the TV's language first (dubbed, then subtitled, then any trailer or
+     * teaser), then in English (or null).
+     */
     private String trailerOf(Pick p) {
         for (String l : new String[] {lang(), "en-US"}) {
             try {
                 JSONArray v = get("/" + p.kind + "/" + p.id + "/videos?language=" + l).optJSONArray("results");
-                String teaser = null;
+                String best = null;
+                int bestScore = -1;
                 for (int i = 0; v != null && i < v.length(); i++) {
                     JSONObject o = v.getJSONObject(i);
                     if (!"YouTube".equals(o.optString("site"))) continue;
-                    if ("Trailer".equals(o.optString("type"))) return o.optString("key");
-                    if (teaser == null && "Teaser".equals(o.optString("type"))) teaser = o.optString("key");
+                    String type = o.optString("type"), name = o.optString("name").toLowerCase(java.util.Locale.ROOT);
+                    int score = "Trailer".equals(type) ? 2 : "Teaser".equals(type) ? 1 : -1;
+                    if (score < 0) continue;
+                    if (name.contains("dublad") || name.contains("dubbed")) score += 20;
+                    else if (name.contains("legendad") || name.contains("subtitled")) score += 10;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best = o.optString("key");
+                    }
                 }
-                if (teaser != null) return teaser;
+                if (best != null) return best;
             } catch (Exception ignored) {
             }
         }
         return null;
+    }
+
+    /** The trailer for a Home pick, looked up on the network: call it off the main thread. */
+    static String trailerFor(Context c, Pick p) {
+        if (p.trailer != null) return p.trailer;
+        if (p.id == 0 || p.kind == null) return null;
+        return get(c).trailerOf(p);
     }
 
     private void fetchCategory(String id) {

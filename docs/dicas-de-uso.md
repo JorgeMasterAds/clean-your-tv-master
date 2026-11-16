@@ -9,6 +9,8 @@ Atalhos e recursos que nem todo mundo descobre sozinho. Todas as telas abaixo s�
 - **← → no destaque** trocam o título; as bolinhas mostram em qual você está. Sozinho, ele troca a cada 8 segundos
   (dá para mudar em Configurações › Abas e reprodução).
 - **OK no título** abre direto no app onde ele está (Netflix, Prime Video, HBO Max, Disney+...).
+- **↓ no título** vai para o botão **▶ Trailer**: OK toca o trailer no SmartTube, dublado quando existe, senão
+  legendado. No SmartTube, deixe a qualidade em 4K 60fps (Predefinições de vídeo) e o áudio em português.
 - **`‹ Top 10 hoje ›`**: as setas trocam a lista (Top 10, Em alta na Netflix, Nota 8+, Marvel, Anime...). **OK** nele
   abre a grade com todas as listas.
 
@@ -54,6 +56,8 @@ instalados com as capas:
 
 - **↓ duas vezes** a partir dos apps chega ao dock de jogos. A tela fica só com os jogos e o fundo vira a arte do
   jogo selecionado.
+- No meio da tela aparecem o **nome do jogo**, quando você jogou pela última vez e as **horas jogadas** (da Steam, ou
+  contadas pelo PC nos jogos abertos pela TV). **↑** vai para o botão **▶ Trailer**.
 - **OK** abre o jogo no PC e a TV troca sozinha para a entrada HDMI do computador. O PC passa a imagem só para a tela
   que você escolheu para esta TV.
 - O jogo **jogado por último** fica à esquerda. Para pôr na ordem que quiser: **segure OK** e mova com **← →**.

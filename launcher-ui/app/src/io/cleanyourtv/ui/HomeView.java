@@ -401,6 +401,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     // Frames
     private boolean running, tilesDirty, statusDirty, heroDirty, drawerDirty, gridDirty, motionDirty = true;
+    /** On the hero: the focus is on the "Trailer" button under the title (↓ from the title, ↑ back). */
+    private boolean trailerFocus, gameTrailerFocus;   // gameTrailerFocus: on the games dock, up goes to the game's Trailer button
+    private Paint trailerLabel;
     private boolean drawerWasMoving, idle;
     private long lastNanos, resumedAt, lastStep;
     private int w, h;
@@ -1806,6 +1809,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void leaveGames() {
+        gameTrailerFocus = false;
         gameMoving = false;
         zone = Z_DRAWER;
         gamesRow.target = 0;
@@ -2345,7 +2349,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             postDelayed(this, 2000);
             if (!picksOn() || cards.isEmpty() || sheetOpen || zone == Z_DRAWER || zone == Z_GAMES || zone == Z_TOP) return;
             int every = Prefs.heroEvery();   // Settings › Tabs and Stremio (0 = the hero stays put)
-            if (every <= 0 || SystemClock.uptimeMillis() - lastKeyAt < every * 1000L) return;
+            if (every <= 0 || (zone == Z_CARDS && trailerFocus) || SystemClock.uptimeMillis() - lastKeyAt < every * 1000L) return;
             lastKeyAt = SystemClock.uptimeMillis();
             if (cardIndex < cards.size() - 1) {
                 cardIndex++;
@@ -2527,11 +2531,17 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     if (!gameMoving) showGameArt();
                 } else if (gameMoving) {
                     return;
+                } else if (dy < 0 && !gameTrailerFocus && gameIndex < gameItems.size()) {
+                    gameTrailerFocus = true;   // up from the dock: the game's Trailer button
                 } else if (dy < 0) {
+                    gameTrailerFocus = false;
                     leaveGames();
+                } else if (gameTrailerFocus) {
+                    gameTrailerFocus = false;  // down: back to the dock
                 } else {
                     return;
                 }
+                heroDirty = true;
                 break;
             case WIDGETS: {
                 List<Integer> on = widgets();
@@ -2642,7 +2652,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (gameIndex >= gameItems.size()) return;
             Games.Game g = gameItems.get(gameIndex);
             click.open();
-            Games.launch(activity, g.id, g.name);
+            if (gameTrailerFocus) Games.trailer(activity, g.id);
+            else Games.launch(activity, g.id, g.name);
             return;
         } else if (zone == Z_DRAWER) {
             if (drawerItems.isEmpty()) return;
@@ -2667,7 +2678,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             Recs.Pick p = cardIndex < cards.size() ? cards.get(cardIndex) : null;
             if (p == null) return;
             click.open();
-            DeepLinks.openPick(getContext(), p);
+            if (trailerFocus && hasTrailerButton(p)) DeepLinks.openTrailer(getContext(), p);
+            else DeepLinks.openPick(getContext(), p);
             return;
         } else {
             if (shelf.isEmpty()) return;
@@ -3496,7 +3508,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             heroInfo.setShadowLayer(10 * k, 0, 2 * k, 0x80000000);
         }
         drawHeaderInfo(c);
-        if (catMenu || zone == Z_GAMES) return;   // on the games dock: only the greeting, the weather and the time
+        if (zone == Z_GAMES && !catMenu) {   // on the games dock: the game's name, when it was played, and its trailer
+            drawGameText(c);
+            return;
+        }
+        if (catMenu) return;
         Recs.Pick p = heroPick();
         if (p == null && tab == CAT_TAB && chipsOn()) {
             c.drawText(Ui.tr("Carregando…", "Loading…"), MARGIN * k, 560 * k, heroTitle);
@@ -3551,12 +3567,51 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (focused) {
             String mode = Prefs.openIn(), service = Recs.serviceName(p);
-            String hint = p.cont ? "OK para continuar no Stremio" : p.trailer != null ? "OK para ver o trailer"
+            String hint = trailerFocus && hasTrailerButton(p) ? Ui.tr("OK para ver o trailer", "OK to watch the trailer")
+                    : p.cont ? "OK para continuar no Stremio" : p.trailer != null ? "OK para ver o trailer"
                     : "page".equals(mode) ? Ui.tr("OK para ver os detalhes", "OK for the details")
                     : "app".equals(mode) && !service.isEmpty() && !"Stremio".equals(service) ? Ui.tr("OK para assistir no ", "OK to watch on ") + service
                     : Ui.tr("OK para assistir no Stremio", "OK to watch in Stremio");
             c.drawText(hint, bx + 18 * k, by + bh / 2 + Ui.halfCap(heroHint), heroHint);
         }
+        if (hasTrailerButton(p)) drawTrailerButton(c, x, 662 * k, focused && trailerFocus);
+    }
+
+    private void drawGameText(Canvas c) {
+        if (gameIndex >= gameItems.size()) return;
+        Games.Game g = gameItems.get(gameIndex);
+        float x = MARGIN * k, maxW = 1300 * k;
+        fitPaint.set(heroTitle);
+        String title = TextUtils.ellipsize(g.name, fitPaint, maxW, TextUtils.TruncateAt.END).toString();
+        c.drawText(title, x - Ui.leftBearing(heroTitle, title), 470 * k, heroTitle);
+        c.drawText(Games.about(g), x, 520 * k, heroMeta);
+        drawTrailerButton(c, x, 556 * k, gameTrailerFocus);
+        String hint = gameMoving ? Ui.tr("← → para mudar de lugar · OK para soltar", "← → to move · OK to drop")
+                : gameTrailerFocus ? Ui.tr("OK para ver o trailer", "OK to watch the trailer")
+                : Ui.tr("OK para jogar no PC · ↑ trailer · segure OK para mudar de lugar", "OK to play on the PC · ↑ trailer · hold OK to move");
+        c.drawText(hint, x + 190 * k, 583 * k + Ui.halfCap(heroHint), heroHint);
+    }
+
+    /** "▶ Trailer" under the title: white when focused, glass otherwise. */
+    private void drawTrailerButton(Canvas c, float x, float top, boolean on) {
+        if (trailerLabel == null) trailerLabel = Ui.text(Ui.semibold, 26 * k, 0xFFFFFFFF);
+        String label = Ui.tr("Trailer", "Trailer");
+        float h = 54 * k, icon = 26 * k, w = 24 * k + icon + 12 * k + trailerLabel.measureText(label) + 28 * k;
+        fill.setShader(null);
+        fill.setColor(on ? 0xFFFFFFFF : 0x40FFFFFF);
+        tmp.set(x, top, x + w, top + h);
+        c.drawRoundRect(tmp, h / 2, h / 2, fill);
+        int ink = on ? L_INK : 0xFFFFFFFF;
+        float cx = x + 24 * k + icon / 2, cy = top + h / 2;
+        Path tri = new Path();   // a play triangle
+        tri.moveTo(cx - icon * 0.32f, cy - icon * 0.4f);
+        tri.lineTo(cx + icon * 0.42f, cy);
+        tri.lineTo(cx - icon * 0.32f, cy + icon * 0.4f);
+        tri.close();
+        fill.setColor(ink);
+        c.drawPath(tri, fill);
+        trailerLabel.setColor(ink);
+        c.drawText(label, x + 24 * k + icon + 12 * k, cy + Ui.halfCap(trailerLabel), trailerLabel);
     }
 
     private void drawClock(Canvas c) {
@@ -3691,7 +3746,31 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
     }
 
+    /** A title gets the "Trailer" button unless it already is a trailer (the Trailers list plays it on OK). */
+    private static boolean hasTrailerButton(Recs.Pick p) {
+        return p != null && p.trailer == null && p.id != 0 && p.kind != null;
+    }
+
     private boolean moveLight(int dx, int dy) {
+        if (zone != Z_CARDS) trailerFocus = false;
+        if (zone == Z_CARDS && dx == 0 && dy != 0) {
+            boolean button = hasTrailerButton(heroPick());
+            if (dy > 0 && !trailerFocus && button) {   // ↓ from the title: its Trailer button
+                trailerFocus = true;
+                heroDirty = true;
+                retarget(false);
+                click.move();
+                return true;
+            }
+            if (dy < 0 && trailerFocus) {              // ↑ from the button: back to the title
+                trailerFocus = false;
+                heroDirty = true;
+                retarget(false);
+                click.move();
+                return true;
+            }
+            trailerFocus = false;
+        }
         switch (zone) {
             case Z_SHELF:
                 if (dy >= 0 || shelf.isEmpty()) return false;

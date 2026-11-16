@@ -164,6 +164,9 @@ final class Games {
     static final class Game {
         final String id, name, art;
         final android.graphics.Bitmap cover;
+        String source = "";   // Steam, Epic, Riot, PC
+        long played;          // last played, in seconds (0 = never seen)
+        double hours;         // hours played (Steam's count, or the PC's own for games opened from the TV)
 
         Game(String id, String name, android.graphics.Bitmap cover, String art) {
             this.id = id;
@@ -207,8 +210,12 @@ final class Games {
                 for (JSONObject g : list) {
                     android.graphics.Bitmap cover = g.optBoolean("cover")
                             ? Images.fetch(base() + "/api/cover?id=" + g.getString("id") + "&v=" + g.optLong("v") + "&t=" + token()) : null;
-                    out.add(new Game(g.getString("id"), g.getString("name"), cover,
-                            base() + "/api/art?id=" + URLEncoder.encode(g.getString("id"), "UTF-8") + "&t=" + token()));
+                    Game one = new Game(g.getString("id"), g.getString("name"), cover,
+                            base() + "/api/art?id=" + URLEncoder.encode(g.getString("id"), "UTF-8") + "&t=" + token());
+                    one.source = g.optString("source");
+                    one.played = g.optLong("played");
+                    one.hours = g.optDouble("hours", 0);
+                    out.add(one);
                 }
             } catch (Exception e) {
                 AppLog.w("games dock: " + e.getMessage());
@@ -216,6 +223,51 @@ final class Games {
             List<Game> result = out;
             MAIN.post(() -> done.accept(result));
         }).start();
+    }
+
+    /** The game's trailer, which the PC looks up on YouTube (Portuguese first), in SmartTube or YouTube. */
+    static void trailer(Activity a, String id) {
+        new Thread(() -> {
+            String key = null;
+            try {
+                key = new JSONObject(request("GET", "/api/trailer?id=" + URLEncoder.encode(id, "UTF-8") + "&t=" + token())).optString("key", null);
+            } catch (Exception e) {
+                AppLog.w("games trailer: " + e.getMessage());
+            }
+            String k = key == null || key.isEmpty() || "null".equals(key) ? null : key;
+            MAIN.post(() -> DeepLinks.playYouTube(a, k));
+        }).start();
+    }
+
+    /** "Jogado hoje · 12 h jogadas · Steam": when, how long and where, for the line under the game's name. */
+    static String about(Game g) {
+        StringBuilder b = new StringBuilder();
+        if (g.played > 0) {
+            java.util.Calendar now = java.util.Calendar.getInstance(), then = java.util.Calendar.getInstance();
+            then.setTimeInMillis(g.played * 1000);
+            int gap = (int) Math.round((startOfDay(now) - startOfDay(then)) / 86400000.0);
+            b.append(gap <= 0 ? Ui.tr("Jogado hoje", "Played today") : gap == 1 ? Ui.tr("Jogado ontem", "Played yesterday")
+                    : gap < 60 ? Ui.tr("Jogado há " + gap + " dias", "Played " + gap + " days ago")
+                    : Ui.tr("Jogado há " + gap / 30 + " meses", "Played " + gap / 30 + " months ago"));
+        } else {
+            b.append(Ui.tr("Ainda não jogado", "Not played yet"));
+        }
+        if (g.hours >= 0.1) {
+            String h = g.hours < 10 ? String.format(java.util.Locale.ROOT, "%.1f", g.hours).replace('.', Ui.en ? '.' : ',')
+                    : String.valueOf(Math.round(g.hours));
+            b.append(" · ").append(h).append(Ui.tr(" h jogadas", " h played"));
+        }
+        if (g.source != null && !g.source.isEmpty() && !"PC".equals(g.source)) b.append(" · ").append(g.source);
+        return b.toString();
+    }
+
+    private static long startOfDay(java.util.Calendar c) {
+        java.util.Calendar d = (java.util.Calendar) c.clone();
+        d.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        d.set(java.util.Calendar.MINUTE, 0);
+        d.set(java.util.Calendar.SECOND, 0);
+        d.set(java.util.Calendar.MILLISECOND, 0);
+        return d.getTimeInMillis();
     }
 
     /** Asks the PC to open the game, then shows the PC's HDMI input. */

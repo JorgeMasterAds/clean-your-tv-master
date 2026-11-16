@@ -122,6 +122,27 @@ final class DeepLinks {
         }).start();
     }
 
+    /** The Home hero's "Trailer" button: finds the trailer (dubbed first) and plays it in SmartTube or YouTube. */
+    static void openTrailer(Context c, Recs.Pick p) {
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        new Thread(() -> {
+            String key = Recs.trailerFor(c, p);
+            main.post(() -> playYouTube(c, key));
+        }).start();
+    }
+
+    /** Plays a YouTube video (a trailer) in the player chosen in Settings, SmartTube, or YouTube. */
+    static void playYouTube(Context c, String key) {
+        if (key == null) {
+            android.widget.Toast.makeText(c, Ui.tr("Trailer não encontrado", "No trailer found"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String url = "https://www.youtube.com/watch?v=" + key;
+        String player = Prefs.trailerPlayer();
+        if ((!player.isEmpty() && open(c, player, url)) || open(c, SMARTTUBE, url) || open(c, "com.google.android.youtube.tv", url)) return;
+        android.widget.Toast.makeText(c, Ui.tr("Instale o SmartTube ou o YouTube para ver trailers", "Install SmartTube or YouTube to watch trailers"), android.widget.Toast.LENGTH_LONG).show();
+    }
+
     /** A Home pick: one from the Stremio library opens right where it stopped (the episode, for a series). */
     static void openPick(Context c, Recs.Pick p) {
         if (p.trailer != null) {   // a trailer: SmartTube, else any YouTube app

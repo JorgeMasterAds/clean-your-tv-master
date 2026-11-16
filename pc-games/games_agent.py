@@ -323,6 +323,8 @@ def make_cover(g, cfg):
 ART = os.path.join(HOME, "game-art")
 ART_OWN = os.path.join(HOME, "game-art-own")
 PLAYED = os.path.join(HOME, "games-played.json")
+PLAYTIME = os.path.join(HOME, "games-time.json")      # seconds played, counted for games opened from the TV
+TRAILERS = os.path.join(HOME, "games-trailer.json")   # game id -> YouTube id of its trailer
 
 
 def make_art(g, cfg):
@@ -367,6 +369,92 @@ def mark_played(g):
             json.dump(d, f)
     except OSError as e:
         log("played: %s" % e)
+
+
+def read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def write_json(path, d):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+    except OSError as e:
+        log("%s: %s" % (os.path.basename(path), e))
+
+
+def add_playtime(g, seconds):
+    d = read_json(PLAYTIME)
+    d[g["id"]] = int(d.get(g["id"], 0) + max(0, seconds))
+    write_json(PLAYTIME, d)
+
+
+def steam_playtime():
+    """appid -> minutes played, from Steam's own record (localconfig.vdf of each Steam account on this PC)."""
+    out = {}
+    for text in steam_localconfigs():
+        for m in re.finditer(r'"(\d+)"\s*\{[^{}]*?"Playtime"\s+"(\d+)"', text):
+            out[m.group(1)] = max(out.get(m.group(1), 0), int(m.group(2)))
+    return out
+
+
+def hours_played(items):
+    """Each game's hours: Steam's playtime, or the time counted when it was opened from the TV."""
+    mine, steam = read_json(PLAYTIME), steam_playtime()
+    out = {}
+    for g in items:
+        sec = max(mine.get(g["id"], 0), steam.get(g.get("steam") or "", 0) * 60)
+        out[g["id"]] = round(sec / 3600, 1)
+    return out
+
+
+def trailer(g, cfg):
+    """The YouTube id of the game's trailer: a search on YouTube, Portuguese first (dubbed, then subtitled); cached."""
+    own = cfg.get("trailers", {}).get(g["name"])   # your pick in games-agent.json: "trailers": {"Game": "<YouTube id>"}
+    if own:
+        return own
+    cache = read_json(TRAILERS)
+    if cache.get(g["id"]):
+        return cache[g["id"]]
+    name = cfg.get("search", {}).get(g["name"], g["name"])
+    key = None
+    for q in (name + " trailer dublado", name + " trailer legendado", name + " official trailer"):
+        try:
+            html = fetch("https://www.youtube.com/results?hl=pt-BR&gl=BR&search_query=" + urllib.parse.quote(q)).decode("utf-8", "replace")
+        except Exception as e:
+            log("trailer: %s" % e)
+            continue
+        for m in re.finditer(r'"videoRenderer":\{"videoId":"([\w-]{11})".{0,1500}?"title":\{"runs":\[\{"text":"([^"]*)"', html):
+            title = m.group(2).lower()
+            if "trailer" in title and not any(w in title for w in ("react", "reação", "review", "análise", "gameplay walkthrough")):
+                key = m.group(1)
+                break
+        if key:
+            break
+    if key:
+        cache[g["id"]] = key
+        write_json(TRAILERS, cache)
+    return key
+
+
+def steam_localconfigs():
+    try:
+        import winreg
+        k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")
+        steam = winreg.QueryValueEx(k, "SteamPath")[0]
+    except Exception:
+        return
+    root = os.path.join(steam, "userdata")
+    for user in os.listdir(root) if os.path.isdir(root) else []:
+        try:
+            with open(os.path.join(root, user, "config", "localconfig.vdf"), encoding="utf-8", errors="replace") as f:
+                yield f.read()
+        except OSError:
+            continue
 
 
 def steam_last_played():
@@ -553,6 +641,7 @@ def watch_until_closed(g, cfg, t0):
         if gone >= 2:
             break
     log("game closed: %s" % g["name"])
+    add_playtime(g, time.time() - t0 - 10)   # minus the last checks after it closed
     restore_screens()
     RUN.update(state="closed")
 
@@ -748,15 +837,20 @@ def handler(cfg):
             if u.path == "/api/games" and method == "GET":
                 items = games(cfg, fresh="fresh" in q)
                 played = last_played(cfg, items)
+                hours = hours_played(items)
                 items = sorted(items, key=lambda g: (-played.get(g["id"], 0), g["name"].lower()))   # latest played first
                 body = [{"id": g["id"], "name": g["name"], "source": g["source"],
                          "cover": bool(make_cover(g, cfg)),   # quick when cached; a new cover is made here
                          "v": int(os.path.getmtime(cover_path(g))) if os.path.exists(cover_path(g)) else 0,
-                         "played": played.get(g["id"], 0)}
+                         "played": played.get(g["id"], 0), "hours": hours.get(g["id"], 0)}
                         for g in items]
                 return self.send(200, json.dumps(body, ensure_ascii=False).encode("utf-8"))
             gid = (q.get("id") or [""])[0]
             g = next((x for x in games(cfg) if x["id"] == gid), None)
+            if u.path == "/api/trailer" and method == "GET":
+                if not g:
+                    return self.send(404, b'{"error":"no such game"}')
+                return self.send(200, json.dumps({"key": trailer(g, cfg)}).encode())
             if u.path == "/api/cover" and method == "GET":
                 p = make_cover(g, cfg) if g else None
                 if not p:
