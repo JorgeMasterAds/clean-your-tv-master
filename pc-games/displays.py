@@ -218,6 +218,7 @@ def tv_only(tv_monitor, saved_path):
                             "bits": dm.dmBitsPerPel})
         return out
 
+    save_windows(saved_path + ".windows")
     if not os.path.exists(saved_path):   # the real layout, saved before anything moves (switching the TV on can move it)
         with open(saved_path, "w", encoding="utf-8") as f:
             json.dump(snapshot(), f, indent=2)
@@ -234,7 +235,7 @@ def tv_only(tv_monitor, saved_path):
         if not tv or not tv["attached"]:
             return "TV não está ligada ao PC como tela"
         time.sleep(1.5)
-    if tv["primary"] and not any(d["attached"] and physical(d) and d["name"] != tv["name"] for d in devices()):
+    if tv["primary"] and not any(d["attached"] and d["name"] != tv["name"] for d in devices()):
         return ""   # already only the TV
     layout = snapshot()
     with open(saved_path + ".tv", "w", encoding="utf-8") as f:   # the TV goes off again once the game is over
@@ -250,13 +251,10 @@ def tv_only(tv_monitor, saved_path):
         dm = mode(d["name"])
         if not dm:
             continue
-        if physical(next(x for x in devices() if x["name"] == d["name"])):
-            dm.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT
-            dm.dmPelsWidth = dm.dmPelsHeight = 0
-            dm.dmPositionX = dm.dmPositionY = 0
-        else:   # virtual screens stay on, moved along with the new origin
-            dm.dmFields = DM_POSITION
-            dm.dmPositionX, dm.dmPositionY = d["x"] - ox, d["y"] - oy
+        # every other screen goes dark while you play, the tablet too: the TV is the only screen
+        dm.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT
+        dm.dmPelsWidth = dm.dmPelsHeight = 0
+        dm.dmPositionX = dm.dmPositionY = 0
         _set(d["name"], dm, CDS_UPDATEREGISTRY | CDS_NORESET)
     _apply()
     return ""
@@ -298,8 +296,8 @@ def restore(saved_path):
         if d["attached"] and hw(d["monitor"]) in want and hw(d["monitor"]) not in now:
             now[hw(d["monitor"])] = d
     primary = next((d for d in layout if d["primary"]), None)
-    for _ in range(10):   # the main screen (the LG) must be back before the layout is set; a tablet may come later
-        if not primary or hw(primary["monitor"]) in now:
+    for _ in range(14):   # the main screen (the LG) and the tablet come back before the layout is set (up to 7 s)
+        if len(now) >= len(want) or (not primary and now):
             break
         time.sleep(0.5)
         for d in devices():
@@ -337,6 +335,8 @@ def restore(saved_path):
                 _set(d["name"], dm, CDS_UPDATEREGISTRY | CDS_SET_PRIMARY | CDS_NORESET)
                 _apply()
     detach_tv(saved_path)
+    time.sleep(1)
+    restore_windows(saved_path + ".windows")
     try:
         os.remove(saved_path)
     except OSError:
@@ -532,3 +532,66 @@ def process_paths():
             paths.append(buf.value)
         kernel32.CloseHandle(h)
     return paths
+
+
+class _WP(ctypes.Structure):   # WINDOWPLACEMENT
+    _fields_ = [("length", wintypes.UINT), ("flags", wintypes.UINT), ("show", wintypes.UINT),
+                ("min_pos", wintypes.POINT), ("max_pos", wintypes.POINT), ("normal", wintypes.RECT)]
+
+
+def _app_windows():
+    """Visible top-level windows of programs (with a title, not tool windows)."""
+    out = []
+    proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def each(hwnd, _):
+        if user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd) > 0 and not user32.GetWindow(hwnd, 4):
+            if not (user32.GetWindowLongW(hwnd, -20) & 0x80):   # WS_EX_TOOLWINDOW
+                out.append(hwnd)
+        return True
+
+    user32.EnumWindows(proc(each), 0)
+    return out
+
+
+def save_windows(path):
+    """Where each program's window is before the game: Windows moves them when the screens change."""
+    if os.path.exists(path):
+        return   # keep the first one until the screens are back
+    rows = []
+    for hwnd in _app_windows():
+        wp = _WP()
+        wp.length = ctypes.sizeof(wp)
+        if user32.GetWindowPlacement(hwnd, ctypes.byref(wp)):
+            n = wp.normal
+            rows.append({"hwnd": int(hwnd), "show": wp.show, "rect": [n.left, n.top, n.right, n.bottom]})
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(rows, f)
+
+
+def restore_windows(path):
+    """Puts every window still open back where it was before the game (maximized ones maximized on their screen)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            rows = json.load(f)
+    except (OSError, ValueError):
+        return
+    for r in rows:
+        hwnd = r["hwnd"]
+        if not user32.IsWindow(hwnd):
+            continue
+        wp = _WP()
+        wp.length = ctypes.sizeof(wp)
+        if not user32.GetWindowPlacement(hwnd, ctypes.byref(wp)):
+            continue
+        maximized = r["show"] == 3
+        if maximized:
+            user32.ShowWindow(hwnd, 9)   # out of maximized first, so it can move to its own screen
+        wp.normal.left, wp.normal.top, wp.normal.right, wp.normal.bottom = r["rect"]
+        wp.show = 3 if maximized else (1 if r["show"] != 2 else 2)
+        wp.flags = 0
+        user32.SetWindowPlacement(hwnd, ctypes.byref(wp))
+    try:
+        os.remove(path)
+    except OSError:
+        pass
