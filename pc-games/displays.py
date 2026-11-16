@@ -75,6 +75,56 @@ def extend():
         subprocess.run(["DisplaySwitch.exe", "/extend"], creationflags=0x08000000)
 
 
+def attach(model):
+    """
+    Turns on a screen that is off (as "Disconnect this display" left it), by its model id ("TOL2881"): Windows'
+    "extend" only brings back the screens it had on last time, so the screen's display path is switched on here.
+    """
+    try:
+        QDC_ALL, QDC_ACTIVE = 1, 2
+        na, nma = ctypes.c_uint32(), ctypes.c_uint32()
+        if user32.GetDisplayConfigBufferSizes(QDC_ACTIVE, ctypes.byref(na), ctypes.byref(nma)):
+            return False
+        active, amodes = (_PATH * na.value)(), (_MODE * nma.value)()
+        if user32.QueryDisplayConfig(QDC_ACTIVE, ctypes.byref(na), active, ctypes.byref(nma), amodes, None):
+            return False
+        nall, nmall = ctypes.c_uint32(), ctypes.c_uint32()
+        if user32.GetDisplayConfigBufferSizes(QDC_ALL, ctypes.byref(nall), ctypes.byref(nmall)):
+            return False
+        every, emodes = (_PATH * nall.value)(), (_MODE * nmall.value)()
+        if user32.QueryDisplayConfig(QDC_ALL, ctypes.byref(nall), every, ctypes.byref(nmall), emodes, None):
+            return False
+        used = {(p.src_adapter.low, p.src_adapter.high, p.src_id) for p in active[:na.value]}
+        on_targets = {(p.tgt_adapter.low, p.tgt_adapter.high, p.tgt_id) for p in active[:na.value]}
+        pick = None
+        for p in every[:nall.value]:
+            if not p.available or (p.tgt_adapter.low, p.tgt_adapter.high, p.tgt_id) in on_targets:
+                continue
+            if (p.src_adapter.low, p.src_adapter.high, p.src_id) in used:
+                continue
+            tgt = _TARGET_NAME()
+            tgt.header.type, tgt.header.size, tgt.header.adapter, tgt.header.id = 2, ctypes.sizeof(tgt), p.tgt_adapter, p.tgt_id
+            if user32.DisplayConfigGetDeviceInfo(ctypes.byref(tgt)):
+                continue
+            if model.lower() in tgt.path.lower():
+                pick = p
+                break
+        if pick is None:
+            return False
+        INVALID = 0xFFFFFFFF
+        paths = (_PATH * (na.value + 1))()
+        for i in range(na.value):
+            paths[i] = active[i]
+            paths[i].src_mode = paths[i].tgt_mode = INVALID
+        paths[na.value] = pick
+        paths[na.value].src_mode = paths[na.value].tgt_mode = INVALID
+        paths[na.value].flags = 1   # DISPLAYCONFIG_PATH_ACTIVE
+        # SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_SAVE_TO_DATABASE | SDC_ALLOW_CHANGES: Windows picks the modes
+        return user32.SetDisplayConfig(na.value + 1, paths, 0, None, 0x80 | 0x20 | 0x200 | 0x400) == 0
+    except Exception:
+        return False
+
+
 def active_monitors():
     """\\.\DISPLAYn -> (monitor device path, friendly name) for the screens on now, from Windows' display paths
     (QueryDisplayConfig). EnumDisplayDevices gave every output the same monitor on this PC, so it can't be trusted."""
@@ -156,10 +206,26 @@ def find_tv(tv_monitor):
 
 def tv_only(tv_monitor, saved_path):
     """The TV becomes the main screen, at the top left; the other physical monitors are switched off."""
+    def snapshot():
+        out = []
+        for d in devices():
+            if not d["attached"]:
+                continue
+            dm = mode(d["name"])
+            if dm:
+                out.append({"name": d["name"], "monitor": d["monitor"], "primary": d["primary"], "x": dm.dmPositionX,
+                            "y": dm.dmPositionY, "w": dm.dmPelsWidth, "h": dm.dmPelsHeight, "hz": dm.dmDisplayFrequency,
+                            "bits": dm.dmBitsPerPel})
+        return out
+
+    if not os.path.exists(saved_path):   # the real layout, saved before anything moves (switching the TV on can move it)
+        with open(saved_path, "w", encoding="utf-8") as f:
+            json.dump(snapshot(), f, indent=2)
     tv = find_tv(tv_monitor)
     if not tv or not tv["attached"]:
-        # The TV may be off as a screen (only the monitor on): Windows' "extend" turns every screen on first.
-        extend()
+        # The TV may be off as a screen (only the monitor on, or "Disconnect this display"): its path is turned on.
+        if not attach(hw(tv_monitor) if "\\" in tv_monitor else tv_monitor):
+            extend()
         for _ in range(20):
             time.sleep(0.5)
             tv = find_tv(tv_monitor)
@@ -170,18 +236,9 @@ def tv_only(tv_monitor, saved_path):
         time.sleep(1.5)
     if tv["primary"] and not any(d["attached"] and physical(d) and d["name"] != tv["name"] for d in devices()):
         return ""   # already only the TV
-    layout = []
-    for d in devices():
-        if not d["attached"]:
-            continue
-        dm = mode(d["name"])
-        if dm:
-            layout.append({"name": d["name"], "monitor": d["monitor"], "primary": d["primary"], "x": dm.dmPositionX,
-                           "y": dm.dmPositionY, "w": dm.dmPelsWidth, "h": dm.dmPelsHeight, "hz": dm.dmDisplayFrequency,
-                           "bits": dm.dmBitsPerPel})
-    if not os.path.exists(saved_path):   # keep the first saved layout (the real one) until it is restored
-        with open(saved_path, "w", encoding="utf-8") as f:
-            json.dump(layout, f, indent=2)
+    layout = snapshot()
+    with open(saved_path + ".tv", "w", encoding="utf-8") as f:   # the TV goes off again once the game is over
+        f.write(hw(tv["monitor"]))
     tvm = mode(tv["name"])
     ox, oy = tvm.dmPositionX, tvm.dmPositionY
     tvm.dmFields = DM_POSITION
@@ -223,8 +280,11 @@ def restore(saved_path):
     """
     if not os.path.exists(saved_path):
         return False
-    with open(saved_path, encoding="utf-8") as f:
-        layout = json.load(f)
+    try:
+        with open(saved_path, encoding="utf-8") as f:
+            layout = json.load(f)
+    except (OSError, ValueError):
+        return False
     want = {hw(d["monitor"]): d for d in layout if d.get("monitor")}
     physical_saved = [d for d in layout if d.get("monitor")]
     extend()
@@ -247,7 +307,15 @@ def restore(saved_path):
                 now[hw(d["monitor"])] = d
     if primary and hw(primary["monitor"]) in now:
         px, py = primary["x"], primary["y"]
+        tv_hw = ""
+        try:
+            with open(saved_path + ".tv", encoding="utf-8") as f:
+                tv_hw = f.read().strip()
+        except OSError:
+            pass
         for key in sorted(now, key=lambda key: not want[key]["primary"]):
+            if key == tv_hw and not want[key]["primary"]:
+                continue   # the TV is switched off right after
             d, s = now[key], want[key]
             dm = mode(d["name"])
             if not dm:
@@ -268,8 +336,45 @@ def restore(saved_path):
                 dm.dmPositionX = dm.dmPositionY = 0
                 _set(d["name"], dm, CDS_UPDATEREGISTRY | CDS_SET_PRIMARY | CDS_NORESET)
                 _apply()
-    os.remove(saved_path)
+    detach_tv(saved_path)
+    try:
+        os.remove(saved_path)
+    except OSError:
+        pass   # restored at the same time by the controller's close and the game watcher
     return True
+
+
+def detach_tv(saved_path):
+    """
+    After the game the TV is no longer a PC screen (as "Disconnect this display" in Windows): only the main monitor
+    and the tablet stay, and the windows left on the TV come back to the main monitor.
+    """
+    try:
+        with open(saved_path + ".tv", encoding="utf-8") as f:
+            tv = f.read().strip()
+    except OSError:
+        return
+    for _ in range(3):
+        on = [d for d in devices() if d["attached"] and hw(d["monitor"]) == tv]
+        if not on:
+            break
+        others = [d for d in devices() if d["attached"] and physical(d) and hw(d["monitor"]) != tv]
+        if not others:
+            return   # the TV is the only screen left: never switch every screen off
+        for d in on:
+            dm = mode(d["name"])
+            if not dm:
+                continue
+            dm.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT
+            dm.dmPelsWidth = dm.dmPelsHeight = 0
+            dm.dmPositionX = dm.dmPositionY = 0
+            _set(d["name"], dm, CDS_UPDATEREGISTRY | CDS_NORESET)
+        _apply()
+        time.sleep(1)
+    try:
+        os.remove(saved_path + ".tv")
+    except OSError:
+        pass
 
 
 def friendly(d):
