@@ -531,7 +531,7 @@ def check_start(g, cfg):
                 if displays.fullscreen_window(pids):
                     RUN.update(state="playing")
                     log("start ok: %s" % g["name"])
-                    return
+                    return watch_until_closed(g, cfg, t0)
             except Exception as e:
                 log("fullscreen check: %s" % e)
         if seen is None and time.time() - t0 > start_wait:
@@ -540,6 +540,21 @@ def check_start(g, cfg):
             return start_failed(g, "o jogo fechou logo depois de abrir")
         if seen is not None and time.time() - seen > show_wait:
             return start_failed(g, "o jogo não ficou em tela cheia")
+
+
+def watch_until_closed(g, cfg, t0):
+    """The game is on: once it closes, the PC's screens go back and /api/status says "closed" (the TV goes Home)."""
+    gone = 0
+    while True:
+        time.sleep(5)
+        if RUN.get("at", 0) > t0:
+            return   # another game was opened meanwhile
+        gone = 0 if game_pids(cfg) else gone + 1
+        if gone >= 2:
+            break
+    log("game closed: %s" % g["name"])
+    restore_screens()
+    RUN.update(state="closed")
 
 
 def start_failed(g, why):
@@ -613,6 +628,8 @@ def close_game(cfg):
         subprocess.run(["taskkill", "/F", "/PID", str(pid)], creationflags=hide, capture_output=True)
     time.sleep(1)
     restore_screens()
+    if RUN.get("state") in ("starting", "playing"):
+        RUN.update(state="closed")
 
 
 def watch_pad(cfg):

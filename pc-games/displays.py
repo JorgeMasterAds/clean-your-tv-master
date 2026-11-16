@@ -68,6 +68,13 @@ class _TARGET_NAME(ctypes.Structure):
                 ("path", wintypes.WCHAR * 128)]
 
 
+def extend():
+    """Every screen on, as Windows last had them extended. SetDisplayConfig does what DisplaySwitch /extend does,
+    without leaving the Win+P panel open on the screen."""
+    if user32.SetDisplayConfig(0, None, 0, None, 0x80 | 0x4):   # SDC_APPLY | SDC_TOPOLOGY_EXTEND
+        subprocess.run(["DisplaySwitch.exe", "/extend"], creationflags=0x08000000)
+
+
 def active_monitors():
     """\\.\DISPLAYn -> (monitor device path, friendly name) for the screens on now, from Windows' display paths
     (QueryDisplayConfig). EnumDisplayDevices gave every output the same monitor on this PC, so it can't be trusted."""
@@ -152,7 +159,7 @@ def tv_only(tv_monitor, saved_path):
     tv = find_tv(tv_monitor)
     if not tv or not tv["attached"]:
         # The TV may be off as a screen (only the monitor on): Windows' "extend" turns every screen on first.
-        subprocess.run(["DisplaySwitch.exe", "/extend"], creationflags=0x08000000)
+        extend()
         for _ in range(20):
             time.sleep(0.5)
             tv = find_tv(tv_monitor)
@@ -220,7 +227,7 @@ def restore(saved_path):
         layout = json.load(f)
     want = {hw(d["monitor"]): d for d in layout if d.get("monitor")}
     physical_saved = [d for d in layout if d.get("monitor")]
-    subprocess.run(["DisplaySwitch.exe", "/extend"], creationflags=0x08000000)
+    extend()
     for _ in range(20):   # up to 10 s for the monitors to come back
         time.sleep(0.5)
         if len(_attached_physical()) >= min(2, len(physical_saved)):

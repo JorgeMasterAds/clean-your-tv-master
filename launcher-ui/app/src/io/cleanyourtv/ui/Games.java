@@ -241,13 +241,23 @@ final class Games {
      * its screens back; the TV leaves the HDMI input and comes back to the games, saying why.
      */
     private static void watchStart(Activity a) {
-        long until = System.currentTimeMillis() + 6 * 60_000L;
+        long start = System.currentTimeMillis(), until = start + 12 * 3600_000L;   // a long evening of play at most
+        boolean playing = false;
         while (System.currentTimeMillis() < until) {
             try {
-                Thread.sleep(3000);
+                Thread.sleep(playing ? 8000 : 3000);
                 JSONObject o = new JSONObject(request("GET", "/api/status?t=" + token()));
                 String state = o.optString("state");
-                if ("playing".equals(state) || "idle".equals(state)) return;
+                if ("idle".equals(state)) return;
+                if ("playing".equals(state)) {
+                    playing = true;
+                    continue;
+                }
+                if ("closed".equals(state)) {   // the game was closed on the PC: its screens are back, the TV goes Home
+                    MAIN.post(() -> goHome(a));
+                    return;
+                }
+                if (!playing && System.currentTimeMillis() - start > 6 * 60_000L) return;
                 if ("failed".equals(state)) {
                     String why = o.optString("error");
                     MAIN.post(() -> {
@@ -266,6 +276,15 @@ final class Games {
             } catch (Exception e) {
                 AppLog.w("games status: " + e.getMessage());
             }
+        }
+    }
+
+    private static void goHome(Activity a) {
+        try {
+            a.startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                    .setPackage(a.getPackageName()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (RuntimeException e) {
+            AppLog.w("games home: " + e.getMessage());
         }
     }
 

@@ -5,6 +5,8 @@
     android:versionName="2.4">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lets Home come back by itself when a PC game closes (an app in the background may not open a screen otherwise). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Granted from ADB (pm grant): lets the screensaver picker switch between this screensaver and Google's. -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
