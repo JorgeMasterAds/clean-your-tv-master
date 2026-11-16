@@ -443,7 +443,7 @@ def handler(cfg):
                 return self.send(403, b'{"error":"forbidden"}')
             if u.path == "/api/games" and method == "GET":
                 body = [{"id": g["id"], "name": g["name"], "source": g["source"],
-                         "cover": os.path.exists(cover_path(g)),
+                         "cover": bool(make_cover(g, cfg)),   # quick when cached; a new cover is made here
                          "v": int(os.path.getmtime(cover_path(g))) if os.path.exists(cover_path(g)) else 0}
                         for g in games(cfg, fresh="fresh" in q)]
                 return self.send(200, json.dumps(body, ensure_ascii=False).encode("utf-8"))
