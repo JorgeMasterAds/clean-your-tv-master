@@ -39,9 +39,65 @@ class DEVMODE(ctypes.Structure):
                 ("dmReserved2", wintypes.DWORD), ("dmPanningWidth", wintypes.DWORD), ("dmPanningHeight", wintypes.DWORD)]
 
 
+class _LUID(ctypes.Structure):
+    _fields_ = [("low", wintypes.DWORD), ("high", wintypes.LONG)]
+
+
+class _PATH(ctypes.Structure):   # DISPLAYCONFIG_PATH_INFO, 72 bytes
+    _fields_ = [("src_adapter", _LUID), ("src_id", ctypes.c_uint32), ("src_mode", ctypes.c_uint32), ("src_flags", ctypes.c_uint32),
+                ("tgt_adapter", _LUID), ("tgt_id", ctypes.c_uint32), ("tgt_mode", ctypes.c_uint32), ("tech", ctypes.c_uint32),
+                ("rotation", ctypes.c_uint32), ("scaling", ctypes.c_uint32), ("rate_n", ctypes.c_uint32), ("rate_d", ctypes.c_uint32),
+                ("scan", ctypes.c_uint32), ("available", wintypes.BOOL), ("tgt_flags", ctypes.c_uint32), ("flags", ctypes.c_uint32)]
+
+
+class _MODE(ctypes.Structure):   # DISPLAYCONFIG_MODE_INFO, 64 bytes (the mode itself is not read here)
+    _fields_ = [("type", ctypes.c_uint32), ("id", ctypes.c_uint32), ("adapter", _LUID), ("data", ctypes.c_byte * 48)]
+
+
+class _HEADER(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_uint32), ("size", ctypes.c_uint32), ("adapter", _LUID), ("id", ctypes.c_uint32)]
+
+
+class _SOURCE_NAME(ctypes.Structure):
+    _fields_ = [("header", _HEADER), ("gdi", wintypes.WCHAR * 32)]
+
+
+class _TARGET_NAME(ctypes.Structure):
+    _fields_ = [("header", _HEADER), ("flags", ctypes.c_uint32), ("tech", ctypes.c_uint32), ("maker", ctypes.c_uint16),
+                ("product", ctypes.c_uint16), ("connector", ctypes.c_uint32), ("friendly", wintypes.WCHAR * 64),
+                ("path", wintypes.WCHAR * 128)]
+
+
+def active_monitors():
+    """\\.\DISPLAYn -> (monitor device path, friendly name) for the screens on now, from Windows' display paths
+    (QueryDisplayConfig). EnumDisplayDevices gave every output the same monitor on this PC, so it can't be trusted."""
+    out = {}
+    try:
+        np, nm = ctypes.c_uint32(), ctypes.c_uint32()
+        if user32.GetDisplayConfigBufferSizes(2, ctypes.byref(np), ctypes.byref(nm)):   # QDC_ONLY_ACTIVE_PATHS
+            return out
+        paths, modes = (_PATH * np.value)(), (_MODE * nm.value)()
+        if user32.QueryDisplayConfig(2, ctypes.byref(np), paths, ctypes.byref(nm), modes, None):
+            return out
+        for pth in paths[:np.value]:
+            src = _SOURCE_NAME()
+            src.header.type, src.header.size, src.header.adapter, src.header.id = 1, ctypes.sizeof(src), pth.src_adapter, pth.src_id
+            tgt = _TARGET_NAME()
+            tgt.header.type, tgt.header.size, tgt.header.adapter, tgt.header.id = 2, ctypes.sizeof(tgt), pth.tgt_adapter, pth.tgt_id
+            if user32.DisplayConfigGetDeviceInfo(ctypes.byref(src)) or user32.DisplayConfigGetDeviceInfo(ctypes.byref(tgt)):
+                continue
+            # "\\?\DISPLAY#TOL2881#5&...#{...}" -> "MONITOR\TOL2881\..." like EnumDisplayDevices' ids
+            parts = tgt.path.split("#")
+            out[src.gdi] = ("MONITOR\\%s\\%s" % (parts[1], parts[2]) if len(parts) > 2 else tgt.path, tgt.friendly)
+    except Exception:
+        pass
+    return out
+
+
 def devices():
     """[{name, adapter, monitor, attached, primary}] for every display output with a monitor."""
     out, i = [], 0
+    active = active_monitors() or None
     while True:
         d = DISPLAY_DEVICE()
         d.cb = ctypes.sizeof(d)
@@ -50,6 +106,11 @@ def devices():
         m = DISPLAY_DEVICE()
         m.cb = ctypes.sizeof(m)
         monitor = m.DeviceID if user32.EnumDisplayDevicesW(d.DeviceName, 0, ctypes.byref(m), 0) else ""
+        attached = bool(d.StateFlags & ATTACHED)
+        if attached and active is not None:
+            monitor = active.get(d.DeviceName, (monitor, ""))[0]
+        elif active is not None and physical({"adapter": d.DeviceString}):
+            monitor = ""   # an output that is off: which monitor it would drive isn't known
         if monitor:
             out.append({"name": d.DeviceName, "adapter": d.DeviceString, "monitor": monitor,
                         "attached": bool(d.StateFlags & ATTACHED), "primary": bool(d.StateFlags & PRIMARY)})
@@ -90,7 +151,16 @@ def tv_only(tv_monitor, saved_path):
     """The TV becomes the main screen, at the top left; the other physical monitors are switched off."""
     tv = find_tv(tv_monitor)
     if not tv or not tv["attached"]:
-        return "TV não está ligada ao PC como tela"
+        # The TV may be off as a screen (only the monitor on): Windows' "extend" turns every screen on first.
+        subprocess.run(["DisplaySwitch.exe", "/extend"], creationflags=0x08000000)
+        for _ in range(20):
+            time.sleep(0.5)
+            tv = find_tv(tv_monitor)
+            if tv and tv["attached"]:
+                break
+        if not tv or not tv["attached"]:
+            return "TV não está ligada ao PC como tela"
+        time.sleep(1.5)
     if tv["primary"] and not any(d["attached"] and physical(d) and d["name"] != tv["name"] for d in devices()):
         return ""   # already only the TV
     layout = []
