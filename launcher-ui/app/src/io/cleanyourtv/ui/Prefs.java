@@ -30,6 +30,18 @@ final class Prefs {
         Ui.applyLanguage();   // the language picked on the TV, now that it can be read
     }
 
+    /** A Stremio account is linked (Settings or config.json): without one the Continue tab has nothing to show. */
+    static boolean stremioLinked() {
+        return app != null && !app.getSharedPreferences("stremio", Context.MODE_PRIVATE).getString("auth", "").isEmpty();
+    }
+
+    /** The PC screen that shows the game when it opens from this TV (a monitor model id; empty = the PC's default). */
+    static String gamesScreen() { return sp().getString("gamesScreen", ""); }
+    static void setGamesScreen(String id) { sp().edit().putString("gamesScreen", id).apply(); }
+
+    static String getString(String key, String fallback) { return sp().getString(key, fallback); }
+    static void putString(String key, String value) { sp().edit().putString(key, value).apply(); }
+
     private static SharedPreferences sp() {
         return app.getSharedPreferences("settings", Context.MODE_PRIVATE);
     }
@@ -157,6 +169,7 @@ final class Prefs {
 
     static String gamesHost() { return sp().getString("gamesHost", "").trim(); }
     static String gamesToken() { return sp().getString("gamesToken", "").trim(); }
+    /** The HDMI input the PC is on; "" = none (a projector or TV without inputs: the picture comes by itself). */
     static String gamesInput() { return sp().getString("gamesInput", "PC"); }
     /** The order you gave the games on the dock (ids, comma-separated); empty = latest played first, from the PC. */
     static String gamesOrder() { return sp().getString("gamesOrder", ""); }

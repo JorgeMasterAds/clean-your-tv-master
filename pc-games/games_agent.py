@@ -548,8 +548,10 @@ def start_failed(g, why):
     restore_screens()
 
 
-def launch(g, cfg):
+def launch(g, cfg, screen=""):
     RUN.update(state="starting", game=g["name"], error="", at=time.time())
+    # The TV says which PC screen is its own (Settings › Tela do computador); else the PC's "tv_monitor".
+    cfg = dict(cfg, tv_monitor="" if screen == "none" else screen or cfg.get("tv_monitor", ""))
     if cfg.get("tv_monitor"):
         try:
             import displays
@@ -650,7 +652,7 @@ def watch_pad(cfg):
     for sc in cfg.get("pad_shortcuts", []):   # {"buttons": ["lb", "rb", "y"], "hold": 3, "run": "C:\...\x.lnk"}
         if sc.get("run") and mask(sc.get("buttons", [])):
             combos.append([mask(sc["buttons"]), float(sc.get("hold", 3)), sc["run"]])
-    combos.sort(key=lambda c: -bin(c[0]).count("1"))
+    combos.sort(key=lambda c: (-bin(c[0]).count("1"), c[2] is not None))   # same buttons: closing the game comes first
     since, fired, st = {}, set(), STATE()
     while True:
         time.sleep(0.15)
@@ -673,7 +675,10 @@ def watch_pad(cfg):
                 continue
             fired.add(n)
             if run is None and not game_pids(cfg) and not os.path.exists(SAVED):
-                continue   # no game open: nothing to close
+                # No game open: the same buttons may have another job then (turning the controllers off).
+                run = next((c[2] for c in combos if c[0] == m and c[2]), None)
+                if run is None:
+                    continue
             try:
                 xi.XInputSetState(who, ctypes.byref(BUZZ(40000, 40000)))
                 time.sleep(0.35)
@@ -741,6 +746,15 @@ def handler(cfg):
                     return self.send(404, b'{"error":"no cover"}')
                 with open(p, "rb") as f:
                     return self.send(200, f.read(), "image/jpeg")
+            if u.path == "/api/screens" and method == "GET":
+                import displays
+                seen, out = set(), []
+                for d in displays.devices():
+                    key = displays.hw(d["monitor"])
+                    if d["attached"] and displays.physical(d) and key not in seen:
+                        seen.add(key)
+                        out.append({"id": key, "name": displays.friendly(d)})
+                return self.send(200, json.dumps(out, ensure_ascii=False).encode("utf-8"))
             if u.path == "/api/status" and method == "GET":
                 return self.send(200, json.dumps({k: RUN[k] for k in ("state", "game", "error")}, ensure_ascii=False).encode("utf-8"))
             if u.path == "/api/art" and method == "GET":
@@ -756,7 +770,7 @@ def handler(cfg):
                 if not g:
                     return self.send(404, b'{"error":"no such game"}')
                 try:
-                    launch(g, cfg)
+                    launch(g, cfg, (q.get("screen") or [""])[0])
                     mark_played(g)
                 except OSError as e:
                     return self.send(500, json.dumps({"error": str(e)}).encode())

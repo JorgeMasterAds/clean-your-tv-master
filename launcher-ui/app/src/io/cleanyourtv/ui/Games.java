@@ -141,6 +141,19 @@ final class Games {
         }).start();
     }
 
+    /** The PC's screens, [model id, name], for Settings › Tela do computador (null when the PC doesn't answer). */
+    static List<String[]> screens() {
+        try {
+            JSONArray a = new JSONArray(request("GET", "/api/screens?t=" + token()));
+            List<String[]> out = new ArrayList<>();
+            for (int i = 0; i < a.length(); i++) out.add(new String[] {a.getJSONObject(i).getString("id"), a.getJSONObject(i).getString("name")});
+            return out;
+        } catch (Exception e) {
+            AppLog.w("games screens: " + e.getMessage());
+            return null;
+        }
+    }
+
     /** Forgets the computer: the Games tab and the dock go away. */
     static void forget() {
         Prefs.setGames("", "", Prefs.gamesInput());
@@ -211,7 +224,8 @@ final class Games {
         Toast.makeText(a, Ui.tr("Abrindo " + name + " no PC…", "Opening " + name + " on the PC…"), Toast.LENGTH_LONG).show();
         new Thread(() -> {
             try {
-                request("POST", "/api/launch?id=" + URLEncoder.encode(id, "UTF-8") + "&t=" + token());
+                request("POST", "/api/launch?id=" + URLEncoder.encode(id, "UTF-8") + "&t=" + token()
+                        + "&screen=" + URLEncoder.encode(Prefs.gamesScreen(), "UTF-8"));
                 MAIN.post(() -> showPc(a));
                 watchStart(a);
             } catch (Exception e) {
@@ -258,6 +272,7 @@ final class Games {
     /** The HDMI input named like the PC's ("PC" by default), as the TV shows it under Inputs. */
     private static void showPc(Activity a) {
         String want = Prefs.gamesInput();
+        if (want.isEmpty()) return;   // no input to switch to: the PC's screen shows on this TV by itself
         for (HomeApps.Item it : HomeApps.allInputs(a)) {
             if (it.inputId == null || !it.label.equalsIgnoreCase(want)) continue;
             Intent i = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(it.inputId));

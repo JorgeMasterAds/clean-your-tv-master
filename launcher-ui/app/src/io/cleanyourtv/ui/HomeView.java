@@ -122,7 +122,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Continue and Categories can be turned off in Settings › Tabs and Stremio. */
     private static boolean tabOn(int i) {
-        return i == CONT_TAB ? Prefs.tabCont() : i == CAT_TAB ? Prefs.tabCat() : i == GAMES_TAB ? Games.configured() : true;
+        return i == CONT_TAB ? Prefs.tabCont() && Prefs.stremioLinked() : i == CAT_TAB ? Prefs.tabCat() : i == GAMES_TAB ? Games.configured() : true;
     }
 
     /** In the tab bar: the categories have their own row under it, so their tab is never drawn there. */

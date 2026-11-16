@@ -106,7 +106,10 @@ final class TvConfig {
             JSONObject pc = o.optJSONObject("games_pc");   // the PC's game list (pc-games/games_agent.py)
             if (pc != null) {
                 String host = pc.optString("host").trim();
-                if (host.isEmpty() || host.matches("[0-9.]{7,15}:[0-9]{2,5}")) Prefs.setGames(host, pc.optString("token").trim(), pc.optString("input", "PC").trim());
+                if (host.isEmpty() || host.matches("[0-9.]{7,15}:[0-9]{2,5}")) {
+                    Prefs.setGames(host, pc.optString("token").trim(), pc.optString("input", "PC").trim());
+                    if (pc.has("screen")) Prefs.setGamesScreen(pc.optString("screen").trim());   // "none" = don't switch
+                }
                 else AppLog.w("config.json: games_pc skipped");
             }
             JSONObject remote = o.optJSONObject("remote");

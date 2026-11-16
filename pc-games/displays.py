@@ -178,6 +178,28 @@ def restore(saved_path):
     return True
 
 
+def friendly(d):
+    """A screen's name for people: the monitor's own name from Windows (EDID), else its model id."""
+    try:
+        import winreg
+        parts = d["monitor"].split("\\")
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Enum\DISPLAY\%s" % parts[1])
+        for i in range(winreg.QueryInfoKey(key)[0]):
+            try:
+                sub = winreg.OpenKey(key, winreg.EnumKey(key, i) + r"\Device Parameters")
+                edid = winreg.QueryValueEx(sub, "EDID")[0]
+            except OSError:
+                continue
+            for o in range(54, 126, 18):   # descriptor 0xFC = the monitor's name
+                if edid[o:o + 3] == b"\x00\x00\x00" and edid[o + 3] == 0xFC:
+                    name = edid[o + 5:o + 18].split(b"\n")[0].decode("ascii", "ignore").strip()
+                    if name:
+                        return name
+    except Exception:
+        pass
+    return hw(d["monitor"])
+
+
 def wait_tv_only(tv_monitor, seconds=12):
     """After the switch: waits until the TV is the main screen and the only physical one, and a little more for the
     picture to settle, so the game opens its window there and not on a screen that is going away."""

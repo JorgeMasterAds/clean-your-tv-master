@@ -440,7 +440,8 @@ public class SettingsActivity extends Activity {
                 {"Filmes e séries infantis ficam fora das sugestões e das categorias.", "Kids movies and shows stay out of the picks and the categories."},
                 {"A saudação muda com a hora (bom dia, boa tarde, boa noite, boa madrugada) e chama você pelo nome. OK para mudar o nome.", "The name after \"Welcome\" at the top of Home. OK to change it."},
                 {"Mostra os jogos do computador na aba Jogos e no dock, e abre o jogo pelo controle. No computador, abra o Jogos do PC (pasta pc-games); aqui, OK procura o computador na rede e você clica em Sim na tela dele. Com ele conectado, OK desconecta.", "Shows the computer's games in the Games tab and the dock, and opens them with the remote. Start PC Games on the computer (pc-games folder); here, OK finds it on the network and you click Yes on its screen. When connected, OK disconnects."},
-                {"A entrada HDMI onde o computador está ligado: a TV muda para ela quando o jogo abre. As setas trocam.", "The HDMI input the computer is plugged into: the TV switches to it when a game opens. The arrows change it."},
+                {"A entrada HDMI onde o computador está ligado: a TV muda para ela quando o jogo abre. Em \"Nenhuma\" (projetor, TV sem entradas) a imagem do PC chega sozinha. As setas trocam.", "The HDMI input the computer is plugged into: the TV switches to it when a game opens. \"None\" (projector, TV without inputs): the PC's picture arrives by itself. The arrows change it."},
+                {"Qual tela do computador mostra o jogo aberto por esta TV: ela vira a única tela enquanto o jogo roda e tudo volta ao fechar. OK busca as telas do PC.", "Which of the computer's screens shows a game opened from this TV: it becomes the only screen while the game runs, and everything comes back when it closes. OK lists the PC's screens."},
         };
 
         /** What the focused option does, and how it is now; the TMDB status and credit at the bottom. */
@@ -511,7 +512,8 @@ public class SettingsActivity extends Activity {
                     Ui.tr("Abrir filmes e séries em", "Open movies and shows in"), Ui.tr("Trailers tocam em", "Trailers play in"),
                     Ui.tr("Trocar o destaque a cada", "Next hero title every"), Ui.tr("Títulos por aba", "Titles per tab"),
                     Ui.tr("Infantil nas sugestões", "Kids titles in picks"), Ui.tr("Nome na saudação", "Name in the greeting"),
-                    Ui.tr("Jogos do PC", "PC games"), Ui.tr("Entrada do computador", "Computer's input")};
+                    Ui.tr("Jogos do PC", "PC games"), Ui.tr("Entrada do computador", "Computer's input"),
+                    Ui.tr("Tela do computador", "Computer's screen")};
         }
 
         private static final String[] TRAILER_APPS = {"", DeepLinks.SMARTTUBE, "com.google.android.youtube.tv"};
@@ -533,7 +535,8 @@ public class SettingsActivity extends Activity {
                     HomeView.greeting(name),
                     Games.configured() ? (Prefs.gamesName().isEmpty() ? Ui.tr("Conectado", "Connected") : Prefs.gamesName())
                             : Ui.tr("Não conectado", "Not connected"),
-                    Prefs.gamesInput()};
+                    Prefs.gamesInput().isEmpty() ? Ui.tr("Nenhuma", "None") : Prefs.gamesInput(),
+                    Prefs.gamesScreen().isEmpty() ? Ui.tr("Padrão do PC", "PC's default") : Prefs.getString("gamesScreenName", Prefs.gamesScreen())};
         }
 
         private static int next(int[] all, int now, int dir) {
@@ -563,8 +566,8 @@ public class SettingsActivity extends Activity {
                 case 6: Prefs.setNoKids(!Prefs.noKids()); Recs.get(ctx).clearCategories(); break;
                 case 9: {
                     List<String> names = new ArrayList<>();
+                    names.add("");   // none: projector or TV without inputs
                     for (HomeApps.Item it : HomeApps.allInputs(ctx)) if (it.inputId != null) names.add(it.label);
-                    if (names.isEmpty()) return;
                     int at = names.indexOf(Prefs.gamesInput());
                     Prefs.setGamesInput(names.get(at < 0 ? 0 : (at + dir + names.size()) % names.size()));
                     break;
@@ -573,6 +576,35 @@ public class SettingsActivity extends Activity {
             }
             HomeData.get(ctx).settingsChanged();
             spoken.focusMoved();
+        }
+
+        /** Settings › Tela do computador: the PC lists its screens; the one picked is sent with every launch. */
+        private void pickPcScreen() {
+            if (!Games.configured()) {
+                Toast.makeText(activity, Ui.tr("Conecte o computador primeiro (Jogos do PC).", "Connect the computer first (PC games)."), Toast.LENGTH_LONG).show();
+                return;
+            }
+            new Thread(() -> {
+                List<String[]> list = Games.screens();
+                post(() -> {
+                    if (list == null) {
+                        Toast.makeText(activity, Ui.tr("O computador não respondeu.", "The computer didn't answer."), Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    String[] names = new String[list.size() + 2];
+                    names[0] = Ui.tr("Padrão do PC", "PC's default");
+                    names[1] = Ui.tr("Não trocar as telas", "Don't switch screens");
+                    for (int i = 0; i < list.size(); i++) names[i + 2] = list.get(i)[1];
+                    new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                            .setTitle(Ui.tr("Tela do computador", "Computer's screen"))
+                            .setItems(names, (d, which) -> {
+                                Prefs.setGamesScreen(which == 0 ? "" : which == 1 ? "none" : list.get(which - 2)[0]);
+                                Prefs.putString("gamesScreenName", which < 2 ? names[which] : list.get(which - 2)[1]);
+                                invalidate();
+                            })
+                            .show();
+                });
+            }).start();
         }
 
         private void askGreeting() {
@@ -1276,6 +1308,9 @@ public class SettingsActivity extends Activity {
                 openPicker(keysScroll + focus + 1);
             } else if (screen == MASTER && focus == GREET_ROW) {
                 askGreeting();
+                return;
+            } else if (screen == MASTER && focus == GREET_ROW + 3) {
+                pickPcScreen();
                 return;
             } else if (screen == MASTER && focus == GREET_ROW + 1) {
                 if (Games.configured()) {
