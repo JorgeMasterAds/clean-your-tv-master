@@ -297,7 +297,7 @@ final class Games {
         boolean playing = false;
         while (System.currentTimeMillis() < until) {
             try {
-                Thread.sleep(playing ? 8000 : 3000);
+                Thread.sleep(playing ? 2500 : 3000);   // a closed game brings the TV Home within seconds
                 JSONObject o = new JSONObject(request("GET", "/api/status?t=" + token()));
                 String state = o.optString("state");
                 if ("idle".equals(state)) return;

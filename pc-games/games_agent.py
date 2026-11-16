@@ -617,9 +617,13 @@ def check_start(g, cfg):
         if pids:
             try:
                 import displays
+                front = displays.bring_to_front(pids)   # the game in front of everything, with the controller's focus
                 if displays.fullscreen_window(pids):
+                    for _ in range(4):   # games often lose the focus while they load: put it back a few times
+                        time.sleep(2)
+                        front = displays.bring_to_front(game_pids(cfg) or pids)
                     RUN.update(state="playing")
-                    log("start ok: %s" % g["name"])
+                    log("start ok: %s%s" % (g["name"], "" if front else " (not in front)"))
                     return watch_until_closed(g, cfg, t0)
             except Exception as e:
                 log("fullscreen check: %s" % e)
@@ -635,16 +639,16 @@ def watch_until_closed(g, cfg, t0):
     """The game is on: once it closes, the PC's screens go back and /api/status says "closed" (the TV goes Home)."""
     gone = 0
     while True:
-        time.sleep(5)
+        time.sleep(2)
         if RUN.get("at", 0) > t0:
             return   # another game was opened meanwhile
         gone = 0 if game_pids(cfg) else gone + 1
         if gone >= 2:
             break
     log("game closed: %s" % g["name"])
-    add_playtime(g, time.time() - t0 - 10)   # minus the last checks after it closed
+    RUN.update(state="closed")   # first: the TV leaves the PC's input and goes Home while the screens come back
+    add_playtime(g, time.time() - t0 - 4)   # minus the last checks after it closed
     restore_screens()
-    RUN.update(state="closed")
 
 
 def start_failed(g, why):

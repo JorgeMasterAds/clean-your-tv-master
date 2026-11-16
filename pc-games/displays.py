@@ -238,7 +238,14 @@ def restore(saved_path):
         if d["attached"] and hw(d["monitor"]) in want and hw(d["monitor"]) not in now:
             now[hw(d["monitor"])] = d
     primary = next((d for d in layout if d["primary"]), None)
-    if primary and hw(primary["monitor"]) in now and len(now) == len(want):
+    for _ in range(10):   # the main screen (the LG) must be back before the layout is set; a tablet may come later
+        if not primary or hw(primary["monitor"]) in now:
+            break
+        time.sleep(0.5)
+        for d in devices():
+            if d["attached"] and hw(d["monitor"]) in want and hw(d["monitor"]) not in now:
+                now[hw(d["monitor"])] = d
+    if primary and hw(primary["monitor"]) in now:
         px, py = primary["x"], primary["y"]
         for key in sorted(now, key=lambda key: not want[key]["primary"]):
             d, s = now[key], want[key]
@@ -251,6 +258,16 @@ def restore(saved_path):
             dm.dmDisplayFrequency, dm.dmBitsPerPel = s["hz"], s["bits"] or 32
             _set(d["name"], dm, CDS_UPDATEREGISTRY | CDS_NORESET | (CDS_SET_PRIMARY if s["primary"] else 0))
         _apply()
+        time.sleep(1)
+        main = next((d for d in devices() if d["primary"]), None)
+        if main and hw(main["monitor"]) != hw(primary["monitor"]) and hw(primary["monitor"]) in now:
+            d = next((x for x in devices() if hw(x["monitor"]) == hw(primary["monitor"])), None)
+            dm = mode(d["name"]) if d else None
+            if dm:   # Windows kept another screen as the main one: hand the role back to the saved main screen
+                dm.dmFields = DM_POSITION
+                dm.dmPositionX = dm.dmPositionY = 0
+                _set(d["name"], dm, CDS_UPDATEREGISTRY | CDS_SET_PRIMARY | CDS_NORESET)
+                _apply()
     os.remove(saved_path)
     return True
 
@@ -324,6 +341,50 @@ def fullscreen_window(pids):
 
     user32.EnumWindows(proc(each), 0)
     return found[0]
+
+
+def bring_to_front(pids):
+    """Puts the biggest visible window of these processes in front, with the keyboard focus. Returns True if found."""
+    pids = set(pids)
+    best = [None, 0]
+    proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def each(hwnd, _):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value in pids:
+            r = RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(r))
+            area = max(0, r.right - r.left) * max(0, r.bottom - r.top)
+            if area > best[1]:
+                best[0], best[1] = hwnd, area
+        return True
+
+    user32.EnumWindows(proc(each), 0)
+    hwnd = best[0]
+    if not hwnd:
+        return False
+    kernel32 = ctypes.windll.kernel32
+    fg = user32.GetForegroundWindow()
+    fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+    me = kernel32.GetCurrentThreadId()
+    attached = bool(fg_thread) and fg_thread != me and user32.AttachThreadInput(me, fg_thread, True)
+    try:
+        user32.keybd_event(0x12, 0, 0, 0)   # an Alt tap: Windows then lets this background program set the focus
+        user32.keybd_event(0x12, 0, 2, 0)
+        user32.ShowWindow(hwnd, 9 if user32.IsIconic(hwnd) else 5)   # SW_RESTORE / SW_SHOW
+        flags = 0x0001 | 0x0002 | 0x0040   # SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
+        user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, flags)   # topmost for a moment...
+        user32.SetWindowPos(hwnd, -2, 0, 0, 0, 0, flags)   # ...then back to normal, now on top of the others
+        user32.BringWindowToTop(hwnd)
+        user32.SetForegroundWindow(hwnd)
+        user32.SetFocus(hwnd)
+    finally:
+        if attached:
+            user32.AttachThreadInput(me, fg_thread, False)
+    return user32.GetForegroundWindow() == hwnd
 
 
 def processes():
