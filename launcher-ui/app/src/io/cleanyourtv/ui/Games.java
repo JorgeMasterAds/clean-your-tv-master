@@ -213,12 +213,46 @@ final class Games {
             try {
                 request("POST", "/api/launch?id=" + URLEncoder.encode(id, "UTF-8") + "&t=" + token());
                 MAIN.post(() -> showPc(a));
+                watchStart(a);
             } catch (Exception e) {
                 AppLog.w("games launch: " + e.getMessage());
                 MAIN.post(() -> Toast.makeText(a, Ui.tr("O PC não abriu o jogo: ", "The PC didn't open the game: ") + e.getMessage(),
                         Toast.LENGTH_LONG).show());
             }
         }).start();
+    }
+
+    /**
+     * While the PC opens the game: if it reports that the game didn't open (or didn't go full screen), the PC has put
+     * its screens back; the TV leaves the HDMI input and comes back to the games, saying why.
+     */
+    private static void watchStart(Activity a) {
+        long until = System.currentTimeMillis() + 6 * 60_000L;
+        while (System.currentTimeMillis() < until) {
+            try {
+                Thread.sleep(3000);
+                JSONObject o = new JSONObject(request("GET", "/api/status?t=" + token()));
+                String state = o.optString("state");
+                if ("playing".equals(state) || "idle".equals(state)) return;
+                if ("failed".equals(state)) {
+                    String why = o.optString("error");
+                    MAIN.post(() -> {
+                        Intent home = new Intent(a, HomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                        try {
+                            a.startActivity(home);
+                        } catch (RuntimeException e) {
+                            AppLog.w("games back: " + e.getMessage());
+                        }
+                        Toast.makeText(a, Ui.tr("Não deu para jogar: " + why + ". As telas do PC voltaram.",
+                                "Couldn't play: " + why + ". The PC's screens are back."), Toast.LENGTH_LONG).show();
+                        MAIN.postDelayed(() -> open(a), 800);
+                    });
+                    return;
+                }
+            } catch (Exception e) {
+                AppLog.w("games status: " + e.getMessage());
+            }
+        }
     }
 
     /** The HDMI input named like the PC's ("PC" by default), as the TV shows it under Inputs. */

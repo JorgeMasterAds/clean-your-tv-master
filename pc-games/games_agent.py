@@ -507,7 +507,49 @@ def watch_game(cfg):
         WATCH["on"] = False
 
 
+RUN = {"state": "idle", "game": "", "error": "", "at": 0}
+
+
+def check_start(g, cfg):
+    """
+    After a launch from the TV: the game must start (a process under the game folders) and show a full-screen window.
+    If it doesn't, the PC's screens go back and the TV hears it (/api/status says "failed") and returns to its games.
+    """
+    t0 = time.time()
+    start_wait, show_wait = float(cfg.get("start_timeout", 120)), float(cfg.get("fullscreen_timeout", 150))
+    seen = None
+    while True:
+        time.sleep(3)
+        if RUN.get("at") != t0 and RUN.get("at", 0) > t0:
+            return   # another launch took over
+        pids = game_pids(cfg)
+        if pids and seen is None:
+            seen = time.time()
+        if pids:
+            try:
+                import displays
+                if displays.fullscreen_window(pids):
+                    RUN.update(state="playing")
+                    log("start ok: %s" % g["name"])
+                    return
+            except Exception as e:
+                log("fullscreen check: %s" % e)
+        if seen is None and time.time() - t0 > start_wait:
+            return start_failed(g, "o jogo não abriu")
+        if seen is not None and not pids and time.time() - seen > 5:
+            return start_failed(g, "o jogo fechou logo depois de abrir")
+        if seen is not None and time.time() - seen > show_wait:
+            return start_failed(g, "o jogo não ficou em tela cheia")
+
+
+def start_failed(g, why):
+    log("start failed: %s (%s)" % (g["name"], why))
+    RUN.update(state="failed", error=why)
+    restore_screens()
+
+
 def launch(g, cfg):
+    RUN.update(state="starting", game=g["name"], error="", at=time.time())
     if cfg.get("tv_monitor"):
         try:
             import displays
@@ -526,9 +568,14 @@ def launch(g, cfg):
         except OSError as e:
             log("before_launch: %s" % e)
     log("launch %s -> %s" % (g["name"], g["launch"]))
-    os.startfile(g["launch"])
+    try:
+        os.startfile(g["launch"])
+    except OSError as e:
+        start_failed(g, str(e))
+        raise
     if cfg.get("tv_monitor"):
         threading.Thread(target=watch_game, args=(cfg,), daemon=True).start()
+    threading.Thread(target=check_start, args=(g, cfg), daemon=True).start()
 
 
 # MARK: - Controller shortcut: hold View + Menu to close the game and put the screens back
@@ -590,35 +637,57 @@ def watch_pad(cfg):
     if xi is None:
         log("pad: no XInput")
         return
-    combo = 0
-    for name in cfg.get("pad_close", ["view", "menu"]):
-        combo |= PAD_BUTTONS.get(name.lower(), 0)
-    hold = float(cfg.get("pad_hold", 2))
-    since, fired, st = None, False, STATE()
+    def mask(names):
+        m = 0
+        for name in names:
+            m |= PAD_BUTTONS.get(str(name).lower(), 0)
+        return m
+
+    # [mask, seconds held, what to do]; the most buttons first, so a bigger combo wins over one inside it.
+    combos = []
+    if cfg.get("pad_close", ["view", "menu"]):
+        combos.append([mask(cfg.get("pad_close", ["view", "menu"])), float(cfg.get("pad_hold", 2)), None])
+    for sc in cfg.get("pad_shortcuts", []):   # {"buttons": ["lb", "rb", "y"], "hold": 3, "run": "C:\...\x.lnk"}
+        if sc.get("run") and mask(sc.get("buttons", [])):
+            combos.append([mask(sc["buttons"]), float(sc.get("hold", 3)), sc["run"]])
+    combos.sort(key=lambda c: -bin(c[0]).count("1"))
+    since, fired, st = {}, set(), STATE()
     while True:
         time.sleep(0.15)
-        who = -1
+        pressed = {}
         for i in range(4):
-            if xi.XInputGetState(i, ctypes.byref(st)) == 0 and combo and st.pad.buttons & combo == combo:
-                who = i
-                break
-        if who < 0:
-            since, fired = None, False
-            continue
-        if since is None:
-            since = time.time()
-        if fired or time.time() - since < hold:
-            continue
-        fired = True
-        if not game_pids(cfg) and not os.path.exists(SAVED):
-            continue   # no game open: nothing to do
-        try:
-            xi.XInputSetState(who, ctypes.byref(BUZZ(40000, 40000)))
-            time.sleep(0.35)
-            xi.XInputSetState(who, ctypes.byref(BUZZ(0, 0)))
-        except Exception:
-            pass
-        threading.Thread(target=close_game, args=(cfg,), daemon=True).start()
+            if xi.XInputGetState(i, ctypes.byref(st)) != 0:
+                continue
+            for n, (m, hold, run) in enumerate(combos):
+                if st.pad.buttons & m == m:
+                    pressed.setdefault(n, i)
+                    break
+        for n in list(since):
+            if n not in pressed:
+                since.pop(n, None)
+                fired.discard(n)
+        for n, who in pressed.items():
+            m, hold, run = combos[n]
+            since.setdefault(n, time.time())
+            if n in fired or time.time() - since[n] < hold:
+                continue
+            fired.add(n)
+            if run is None and not game_pids(cfg) and not os.path.exists(SAVED):
+                continue   # no game open: nothing to close
+            try:
+                xi.XInputSetState(who, ctypes.byref(BUZZ(40000, 40000)))
+                time.sleep(0.35)
+                xi.XInputSetState(who, ctypes.byref(BUZZ(0, 0)))
+            except Exception:
+                pass
+            if run is None:
+                threading.Thread(target=close_game, args=(cfg,), daemon=True).start()
+            else:
+                log("pad: run %s" % run)
+                try:
+                    os.startfile(run)
+                except OSError as e:
+                    log("pad run: %s" % e)
 
 
 def handler(cfg):
@@ -672,6 +741,8 @@ def handler(cfg):
                     return self.send(404, b'{"error":"no cover"}')
                 with open(p, "rb") as f:
                     return self.send(200, f.read(), "image/jpeg")
+            if u.path == "/api/status" and method == "GET":
+                return self.send(200, json.dumps({k: RUN[k] for k in ("state", "game", "error")}, ensure_ascii=False).encode("utf-8"))
             if u.path == "/api/art" and method == "GET":
                 p = make_art(g, cfg) if g else None
                 if not p:
@@ -770,7 +841,7 @@ def main():
         return
     threading.Thread(target=warm_covers, args=(cfg,), daemon=True).start()
     threading.Thread(target=answer_discovery, args=(cfg,), daemon=True).start()
-    if cfg.get("pad_close", ["view", "menu"]):
+    if cfg.get("pad_close", ["view", "menu"]) or cfg.get("pad_shortcuts"):
         threading.Thread(target=watch_pad, args=(cfg,), daemon=True).start()
     if os.path.exists(SAVED) and not game_running(cfg):   # the PC was turned off mid-game: screens back first
         restore_screens()

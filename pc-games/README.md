@@ -26,6 +26,9 @@ Mostra na TV os jogos instalados no computador, com capa. OK num jogo abre o jog
 - **Fechar o jogo pelo controle:** segure **View + Menu** (os dois botões pequenos do meio, num controle tipo Xbox) por
   2 segundos. O controle vibra, o jogo recebe o pedido de fechar (e é forçado depois de 8 s) e as telas do PC voltam.
   Troque a combinação em `pad_close` (ex.: `["lb", "rb", "view"]`) e o tempo em `pad_hold`; `"pad_close": []` desliga.
+- **Se o jogo não abrir** (sem processo em 2 min, fecha logo, ou não fica em tela cheia em 2,5 min), as telas do PC voltam
+  e a TV sai do HDMI e volta para os jogos, dizendo o motivo. Tempos em `start_timeout` e `fullscreen_timeout`.
+- **Outros atalhos no controle:** `pad_shortcuts`, ex. `[{"buttons": ["lb","rb","y"], "hold": 3, "run": "C:\caminho\atalho.lnk"}]`.
 - O fundo mostra a arte larga do jogo (da Steam, ou sua em `game-art-own/<nome>.jpg`); sem ela, a capa.
 
 ## Ajustes (`%USERPROFILE%\.cleanyourtv\games-agent.json`)

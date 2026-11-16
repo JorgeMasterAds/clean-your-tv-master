@@ -191,6 +191,42 @@ def wait_tv_only(tv_monitor, seconds=12):
     return False
 
 
+class RECT(ctypes.Structure):
+    _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG), ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", RECT), ("rcWork", RECT), ("dwFlags", wintypes.DWORD)]
+
+
+def fullscreen_window(pids):
+    """True when one of these processes shows a window that covers its whole screen (fullscreen or borderless)."""
+    pids = set(pids)
+    found = [False]
+    proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def each(hwnd, _):
+        if not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
+            return True
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value not in pids:
+            return True
+        r, mi = RECT(), MONITORINFO()
+        mi.cbSize = ctypes.sizeof(MONITORINFO)
+        user32.GetWindowRect(hwnd, ctypes.byref(r))
+        if not user32.GetMonitorInfoW(user32.MonitorFromWindow(hwnd, 2), ctypes.byref(mi)):
+            return True
+        m = mi.rcMonitor
+        if r.left <= m.left and r.top <= m.top and r.right >= m.right and r.bottom >= m.bottom:
+            found[0] = True
+            return False
+        return True
+
+    user32.EnumWindows(proc(each), 0)
+    return found[0]
+
+
 def processes():
     """[(pid, path)] of every process this user can see."""
     arr = (wintypes.DWORD * 4096)()
