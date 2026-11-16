@@ -8,6 +8,9 @@ trailers de estreias e os botões do controle trocados para o que você usa.
 
 Grátis e de código aberto. Baixe o APK em **[Releases](../../releases)**.
 
+**Novo por aqui?** Veja as [dicas de uso com capturas de tela](docs/dicas-de-uso.md): o atalho escondido das
+entradas HDMI, o Continuar do Stremio, os jogos do PC na TV e mais.
+
 ## O que tem
 
 - **Início em tela cheia**: a foto do título em destaque ocupa a tela; troca sozinha a cada 8 segundos, com até 10
@@ -28,6 +31,8 @@ Grátis e de código aberto. Baixe o APK em **[Releases](../../releases)**.
 - **Configurações** em preto e vermelho animado, com um painel que explica cada opção: Conta Stremio (liga pelo
   celular com um código, sem senha na TV), Categoria da Início e **Abas e Stremio** (liga/desliga Continuar e
   categorias, onde os títulos abrem, app dos trailers, tempo do destaque, títulos por aba, infantil, saudação).
+- **Jogos do PC na TV**: os jogos do computador com capa na Início; OK abre o jogo no PC e a TV troca sozinha para
+  o HDMI dele. Fecha pelo controle e tudo volta como estava ([dicas](docs/dicas-de-uso.md#6-jogos-do-pc-na-tv)).
 - **Limpeza da TV**: listas por modelo para tirar anúncios e apps de fábrica, com backup e como desfazer
   ([`README.cleanyourtv.md`](README.cleanyourtv.md)).
 
@@ -38,7 +43,7 @@ Você precisa de um computador com ADB (platform-tools) no mesmo Wi-Fi da TV e a
 
 ```bash
 adb connect IP-DA-TV:5555
-adb install -r CleanYourTV-Master-2.0.apk
+adb install -r CleanYourTV-Master-2.5.apk
 adb shell cmd package set-home-activity --user 0 io.cleanyourtv.ui/.HomeActivity
 adb shell input keyevent KEYCODE_HOME
 ```

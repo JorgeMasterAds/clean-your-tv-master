@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.cleanyourtv.ui"
-    android:versionCode="6"
-    android:versionName="2.4">
+    android:versionCode="7"
+    android:versionName="2.5">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Lets Home come back by itself when a PC game closes (an app in the background may not open a screen otherwise). -->

@@ -495,7 +495,7 @@ final class Recs {
                     long dur = st.optLong("duration"), off = st.optLong("timeOffset");
                     boolean done = dur > 0 && off > dur * 0.92;   // episode over: Stremio moves on to the next one
                     String left = done ? " · próximo episódio"
-                            : dur > 0 && off > 0 ? " · faltam " + Math.max(1, Math.round((dur - off) / 60000.0)) + " min" : "";
+                            : dur > 0 && off > 0 ? " · " + timeLeft(Math.max(1, Math.round((dur - off) / 60000.0))) : "";
                     p.meta = (ep.isEmpty() ? "Filme" : "Série" + ep) + left;
                     p.progress = dur > 0 && !done ? Math.max(0, Math.min(1, off / (float) dur)) : 0;
                     p.imdb = imdb;
@@ -1115,5 +1115,12 @@ final class Recs {
         int n;
         while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
         return out.toString(StandardCharsets.UTF_8.name());
+    }
+
+    /** "faltam 45 min", or past an hour "falta 1 h 48 min" / "faltam 2 h". */
+    static String timeLeft(long min) {
+        if (min < 60) return "faltam " + min + " min";
+        long h = min / 60, m = min % 60;
+        return (h == 1 ? "falta " : "faltam ") + h + " h" + (m > 0 ? " " + m + " min" : "");
     }
 }
