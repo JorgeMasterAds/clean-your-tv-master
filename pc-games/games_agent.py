@@ -769,11 +769,19 @@ def handler(cfg):
             if u.path == "/api/launch" and method == "POST":
                 if not g:
                     return self.send(404, b'{"error":"no such game"}')
-                try:
-                    launch(g, cfg, (q.get("screen") or [""])[0])
-                    mark_played(g)
-                except OSError as e:
-                    return self.send(500, json.dumps({"error": str(e)}).encode())
+                # Answered at once: switching the screens can take ~15 s and the TV must switch its input meanwhile;
+                # a game that fails to open shows up in /api/status, and the TV comes back from the input.
+                RUN.update(state="starting", game=g["name"], error="", at=time.time())
+                screen = (q.get("screen") or [""])[0]
+
+                def go():
+                    try:
+                        launch(g, cfg, screen)
+                        mark_played(g)
+                    except Exception as e:
+                        log("launch: %s" % e)
+
+                threading.Thread(target=go, daemon=True).start()
                 return self.send(200, json.dumps({"ok": True, "name": g["name"]}, ensure_ascii=False).encode("utf-8"))
             return self.send(404, b'{"error":"not found"}')
 

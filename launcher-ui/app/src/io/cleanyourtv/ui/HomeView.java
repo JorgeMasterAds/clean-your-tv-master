@@ -1143,7 +1143,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** How dark it is: 0 = day, 1 = night (in between during the transition). */
     private float dark() {
-        return night;
+        // Full-screen photo Home: white text day and night (dark text read wrong over the photos).
+        return Tmdb.hasKey() ? 1 : night;
     }
 
     /** The day color or the night color, depending on the night value (blended during the transition). */
