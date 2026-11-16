@@ -42,6 +42,7 @@ DEFAULTS = {
     "before_launch": "",         # optional: a shortcut or program run first (e.g. switch the PC's output to the TV)
     "covers": {},                # "Game name": "https://... or C:\\path\\cover.jpg"
     "search": {},                # "Game name": "name to look its cover up by" (e.g. the English title)
+    "names": {},                 # "Name found": "name to show"
     "hidden": [],                # game names to leave out
 }
 
@@ -197,7 +198,10 @@ def scan(cfg):
     hidden = {norm(h) for h in cfg.get("hidden", [])}
     games, keys, names = [], set(), set()
 
+    renames = cfg.get("names", {})
+
     def add(g, key):
+        g["name"] = renames.get(g["name"], g["name"])   # your own name for it ("Hookshot" -> the game it runs)
         n = norm(g["name"])
         if not n or n in hidden or key in keys or n in names:
             return
