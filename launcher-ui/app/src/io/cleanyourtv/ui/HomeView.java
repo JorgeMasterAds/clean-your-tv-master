@@ -12,8 +12,6 @@ import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.RadialGradient;
-import android.graphics.SweepGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -87,7 +85,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final long TOAST_MS = 6000, FADE_MS = 800;
     /** Blur radii of the shadow and shadowDeep paints (Shadows needs them to draw the same blur on older TVs). */
     private static final float SHADOW_BLUR = 26, DEEP_BLUR = 30;
-    private static final int SKY = 0, HERO = 1, STATUS = 2, PLATTER = 3, TILES = 4, DRAWER = 5, SHEET = 6, TOAST = 7, COSMOS = 8;
+    private static final int SKY = 0, HERO = 1, STATUS = 2, PLATTER = 3, TILES = 4, DRAWER = 5, SHEET = 6, TOAST = 7;
     private static final int Z_STATUS = 0, Z_HERO = 1, Z_SHELF = 2, Z_DRAWER = 3;
     private static final ExecutorService LOADER = Executors.newSingleThreadExecutor();
     // Light design (the L_ constants): title, tab bar, three recommendation cards and the shelf.
@@ -271,7 +269,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         @Override public boolean clickable(int id) { return (id - 1) / 1000 != WIDGETS; }
     });
     private final RectF a11yRect = new RectF();
-    private final Layer cosmos;
     private final Layer sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer;
     private int zone = Z_SHELF;
 
@@ -465,7 +462,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             scene.setOffset(0, kind == DRAWER || kind == STATUS ? 0 : getTranslationY());
             switch (kind) {
                 case SKY: drawSky(c); break;
-                case COSMOS: drawCosmos(c); if (running && Prefs.cosmos() > 0) postInvalidateDelayed(33); break;
                 case HERO: drawLightTop(c); drawChips(c); drawCatMenu(c); break;
                 case STATUS: drawLightButtons(c); break;
                 case PLATTER: drawPlatter(c); break;
@@ -514,7 +510,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         tvInputs = (TvInputManager) a.getSystemService(Context.TV_INPUT_SERVICE);
         setFocusable(true);
         sky = new Layer(a, SKY);
-        cosmos = new Layer(a, COSMOS);
         heroLayer = new Layer(a, HERO);
         status = new Layer(a, STATUS);
         platter = new Layer(a, PLATTER);
@@ -527,7 +522,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // frame cost more than drawing straight to the screen (measured: focus on the picks 33 → 12 ms a frame, the
         // drawer 19 → 17 ms).
         for (View v : new View[] {heroLayer, status, platter, tiles, drawerLayer, sheetLayer}) v.setLayerType(Ui.LEGACY ? LAYER_TYPE_NONE : LAYER_TYPE_HARDWARE, null);
-        for (View v : new View[] {sky, cosmos, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer}) {
+        for (View v : new View[] {sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer}) {
             v.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);   // TalkBack reads the items (Spoken)
             addView(v);
         }
@@ -657,7 +652,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void invalidateAll() {
-        for (View v : new View[] {sky, cosmos, heroLayer, status, platter, tiles, drawerLayer}) v.invalidate();
+        for (View v : new View[] {sky, heroLayer, status, platter, tiles, drawerLayer}) v.invalidate();
     }
 
     // MARK: - Size and layers
@@ -686,7 +681,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         int width = r - l, height = b - t;
         float kk = width / 1920f;
         sky.layout(0, 0, width, height);
-        cosmos.layout(0, 0, width, height);
         place(heroLayer, 0, 0);
         place(status, Ui.he ? 0 : width - status.getMeasuredWidth(), 0);   // Hebrew: the buttons sit on the left (layoutLight)
         float up = picksOn() ? L_PLATTER_TOP - HERO_DOCK_TOP : 0;   // one-screen Home: the dock sits higher
@@ -932,7 +926,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** This hour's picks: the cards and the background image (called when Recs notifies and every 15 s). */
     private void updatePicks() {
         if (labelPaint == null) return;
-        updateCards();
+        updateCards(true);
     }
 
     private static boolean samePicks(List<Recs.Pick> a, List<Recs.Pick> b) {
@@ -2990,6 +2984,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** The three cards of the current page and the background from the first one; the pages around it get ready. */
     private void updateCards() {
+        updateCards(false);
+    }
+
+    /**
+     * With `keep` (new data, not a key press): the title on screen stays on screen even when details arrive and drop
+     * other picks before it; if it was dropped itself, the one that takes its place gets the full time on screen.
+     */
+    private void updateCards(boolean keep) {
+        String shown = keep && !cards.isEmpty() ? Recs.key(cards.get(Math.min(cardIndex, cards.size() - 1))) : null;
         // Where we are in the tab: a new list (every hour, or details that drop a pick) keeps the tab and the page.
         if (!tabOn(tab)) {   // the tab was turned off in Settings
             tab = 0;
@@ -3002,11 +3005,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             tabFirst[t + 1] = tabFirst[t] + pages;
         }
         int total = tabFirst[NT], pages = tabFirst[tab + 1] - tabFirst[tab];
+        int found = -1;
+        if (shown != null) for (int j = 0; j < tabPicks[tab].size(); j++) if (Recs.key(tabPicks[tab].get(j)).equals(shown)) { found = j; break; }
+        if (found >= 0) inTab = found / 3;
         page = tabFirst[tab] + Math.min(inTab, Math.max(0, pages - 1));
         List<Recs.Pick> list = pages > 0 ? pageCards(page) : new ArrayList<>();
         if (!samePicks(list, cards)) {
             cards = list;
-            cardIndex = Math.min(cardIndex, Math.max(0, list.size() - 1));
+            cardIndex = found >= 0 ? found % 3 : Math.min(cardIndex, Math.max(0, list.size() - 1));
+            if (shown != null && (cards.isEmpty() || !Recs.key(cards.get(cardIndex)).equals(shown))) lastKeyAt = SystemClock.uptimeMillis();
             if (zone == Z_CARDS && list.isEmpty()) {
                 zone = Z_SHELF;
                 retarget(false);
@@ -3063,134 +3070,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         heroDirty = true;
     }
 
-
-    // MARK: - Cosmos: the animated space backdrop (stars, nebula and a glowing ring on the focus)
-
-    private static final int STARS = 150;
-    private float[] starX, starY, starR, starPh, starTw, starSp;
-    private int[] starC;
-    private int starsW;
-    private final RadialGradient[] nebula = new RadialGradient[3];
-    private SweepGradient auraSweep;
-    private final Matrix cosMatrix = new Matrix();
-    private final Paint cosPaint = new Paint(Paint.ANTI_ALIAS_FLAG), auraPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final RectF auraRect = new RectF();
-    private long cosmosT0;
-
-    private static final int[] STAR_TINTS = {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFD6D0, 0xFFFFB3A8, 0xFFFFE9C9, 0xFFFF8A80};
-
-    private void initCosmos() {
-        java.util.Random r = new java.util.Random(1977);
-        starX = new float[STARS]; starY = new float[STARS]; starR = new float[STARS];
-        starPh = new float[STARS]; starTw = new float[STARS]; starSp = new float[STARS]; starC = new int[STARS];
-        for (int i = 0; i < STARS; i++) {
-            float depth = r.nextFloat();                       // 0 far, 1 near: near stars are bigger and drift faster
-            starX[i] = r.nextFloat() * w;
-            starY[i] = r.nextFloat() * h;
-            starR[i] = (0.7f + 1.9f * depth * depth) * k;
-            starPh[i] = r.nextFloat() * 6.283f;
-            starTw[i] = 0.6f + r.nextFloat() * 2.2f;
-            starSp[i] = (2 + 10 * depth) * k;                  // pixels per second, to the left
-            starC[i] = STAR_TINTS[r.nextInt(STAR_TINTS.length)];
-        }
-        float big = Math.max(w, h);
-        int[][] cols = {{0x70C8001E, 0x2E7A0010, 0x00000000}, {0x5AFF2A1A, 0x26A01008, 0x00000000}, {0x40FF6A2A, 0x18902808, 0x00000000}};
-        for (int i = 0; i < 3; i++)
-            nebula[i] = new RadialGradient(0, 0, big * (0.42f - 0.06f * i), cols[i], new float[] {0, 0.45f, 1}, Shader.TileMode.CLAMP);
-        auraSweep = new SweepGradient(0, 0, new int[] {0xFFFF1E2D, 0xFF8A0012, 0xFFFF5A36, 0xFFFFD2C2, 0xFFFF1E2D}, null);
-        auraPaint.setStyle(Paint.Style.STROKE);
-        cosPaint.setStrokeCap(Paint.Cap.ROUND);
-        starsW = w;
-        cosmosT0 = SystemClock.uptimeMillis();
-    }
-
-    /** Where the photo is bright (top right) the stars fade, so the poster stays clean; on the dark scrims they shine. */
-    private float starMask(float x, float y) {
-        float left = 1.15f - x / w * 1.3f, bottom = (y / h - 0.5f) * 2.2f;
-        return Ui.clamp(Math.max(0.18f, Math.max(left, bottom)));
-    }
-
-    private void drawCosmos(Canvas c) {
-        int level = Prefs.cosmos();
-        if (level == 0 || w == 0 || h == 0) return;
-        if (starX == null || starsW != w) initCosmos();
-        long up = SystemClock.uptimeMillis();
-        float t = (up - cosmosT0) / 1000f;
-        float dim = 1 - 0.6f * Ui.clamp(drawer.value);         // all apps open: the sky calms down
-
-        // Nebula: three soft clouds drifting on slow orbits and breathing.
-        if (level >= 2) {
-            for (int i = 0; i < 3; i++) {
-                float[] o = NEBULA_ORBIT[i];
-                float cx = w * (o[0] + o[2] * (float) Math.sin(t * o[4] * 6.283f + i * 2.1f));
-                float cy = h * (o[1] + o[3] * (float) Math.cos(t * o[4] * 5.1f + i));
-                float breathe = 0.75f + 0.25f * (float) Math.sin(t * 0.35f + i * 1.7f);
-                cosMatrix.setTranslate(cx, cy);
-                nebula[i].setLocalMatrix(cosMatrix);
-                cosPaint.setStyle(Paint.Style.FILL);
-                cosPaint.setShader(nebula[i]);
-                cosPaint.setAlpha(Math.round(255 * breathe * dim * (i == 2 ? 0.7f : 1)));
-                c.drawCircle(cx, cy, Math.max(w, h) * (0.42f - 0.06f * i), cosPaint);
-            }
-            cosPaint.setShader(null);
-            cosPaint.setAlpha(255);
-        }
-
-        // Stars: drifting left at many depths and twinkling; the brightest get a little cross of light.
-        float speed = level >= 2 ? 1 : 0.5f;
-        for (int i = 0; i < STARS; i++) {
-            float x = starX[i] - t * starSp[i] * speed;
-            x = ((x % w) + w) % w;
-            float y = starY[i];
-            float tw = 0.5f + 0.5f * (float) Math.sin(t * starTw[i] + starPh[i]);
-            float a = (0.25f + 0.75f * tw) * starMask(x, y) * dim;
-            if (a < 0.03f) continue;
-            cosPaint.setColor(starC[i]);
-            cosPaint.setAlpha(Math.round(255 * a));
-            c.drawCircle(x, y, starR[i] * (0.8f + 0.3f * tw), cosPaint);
-            if (starR[i] > 2.0f * k && tw > 0.7f) {
-                float len = starR[i] * 9 * (tw - 0.55f);
-                cosPaint.setAlpha(Math.round(150 * a));
-                cosPaint.setStrokeWidth(0.9f * k);
-                c.drawLine(x - len, y, x + len, y, cosPaint);
-                c.drawLine(x, y - len, x, y + len, cosPaint);
-            }
-        }
-
-        cosPaint.setAlpha(255);
-
-        // Aura: a rotating ring of cosmic colour behind whatever has the focus (a dock app).
-        if (level >= 2 && !sheetOpen && drawer.value < 0.05f) {
-            float ty = tiles.getTranslationY();
-            for (int i = 0; i < tileRects.length && i < tileFocus.length; i++) {
-                float v = tileFocus[i].value;
-                if (v < 0.02f) continue;
-                RectF b = tileRects[i];
-                float s = 1 + FOCUS_GROW * v, bw = b.width() * s, bh = b.height() * s, cx = b.centerX(), cy = b.centerY() + ty;
-                drawAura(c, cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2, TILE_RADIUS * k * s, Ui.clamp(v), t);
-            }
-        }
-    }
-
-    private static final float[][] NEBULA_ORBIT = {{0.18f, 0.30f, 0.10f, 0.08f, 0.031f}, {0.08f, 0.90f, 0.06f, 0.04f, 0.023f}, {0.34f, 0.04f, 0.10f, 0.04f, 0.017f}};
-    private static final float[] AURA_GROW = {5, 10, 17}, AURA_WIDTH = {4, 6, 8};
-    private static final int[] AURA_ALPHA = {235, 95, 38};
-
-    private void drawAura(Canvas c, float l, float tp, float r, float b, float radius, float f, float t) {
-        float pulse = 0.7f + 0.3f * (float) Math.sin(t * 3.2f);
-        cosMatrix.setRotate((t * 90) % 360);
-        cosMatrix.postTranslate((l + r) / 2, (tp + b) / 2);
-        auraSweep.setLocalMatrix(cosMatrix);
-        auraPaint.setShader(auraSweep);
-        for (int j = 0; j < 3; j++) {
-            float g = AURA_GROW[j] * k;
-            auraRect.set(l - g, tp - g, r + g, b + g);
-            auraPaint.setStrokeWidth(AURA_WIDTH[j] * k);
-            auraPaint.setAlpha(Math.round(AURA_ALPHA[j] * f * pulse));
-            c.drawRoundRect(auraRect, radius + g, radius + g, auraPaint);
-        }
-        auraPaint.setShader(null);
-    }
 
     /**
      * Background: the first card's photo, heavily blurred and almost white; without it, a light gradient. At night, the

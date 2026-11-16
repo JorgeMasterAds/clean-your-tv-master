@@ -64,11 +64,8 @@ final class Prefs {
 
     static void setTemperature(String v) { put("temperature", v); }
 
-    /** "auto" (dark from sunset to sunrise), "light" or "dark". */
-    static String theme() {
-        String v = sp().getString("theme", "auto");
-        return v.equals("light") || v.equals("dark") ? v : "auto";
-    }
+    /** Clean Your TV Master: one standard look (it follows the time of day by itself); no light or dark choice. */
+    static String theme() { return "auto"; }
 
     static void setTheme(String v) { put("theme", v); }
 
@@ -256,9 +253,6 @@ final class Prefs {
     static void setPerTab(int n) { sp().edit().putInt("perTab", n).apply(); version++; }
     static String greetName() { return sp().getString("greetName", "Master"); }
     static void setGreetName(String v) { put("greetName", v == null ? "" : v.trim()); }
-    /** Animated space backdrop on Home: 2 animated (nebula, focus aura), 1 soft (stars only), 0 off. */
-    static int cosmos() { return sp().getInt("cosmos", 2); }
-    static void setCosmos(int n) { sp().edit().putInt("cosmos", n).apply(); version++; }
     static boolean noKids() { return sp().getBoolean("noKids", true); }
     static void setNoKids(boolean on) { put("noKids", on); }
 

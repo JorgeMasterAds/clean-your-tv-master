@@ -418,14 +418,14 @@ public class SettingsActivity extends Activity {
         private String[] mainInfo(int i) {
             switch (i) {
                 case 0: return new String[] {Ui.tr("Protetor de tela", "Screensaver"), Ui.tr("O que aparece quando a TV fica parada. As setas trocam o estilo, OK mostra agora.", "What shows when the TV sits idle. The arrows change the style, OK shows it now."), styleName(Prefs.screensaverStyle())};
-                case 1: return new String[] {Ui.tr("Aparência e clima", "Home Settings"), Ui.tr("Idioma, temperatura, tema, relógio, clima, cidade e cotações.", "Language, temperature, theme, clock, weather, city and quotes."), ""};
+                case 1: return new String[] {Ui.tr("Aparência e clima", "Home Settings"), Ui.tr("Idioma, temperatura, relógio, clima e cidade.", "Language, temperature, clock, weather and city."), ""};
                 case 2: return new String[] {Ui.tr("Apps do dock", "Shelf"), Ui.tr("Quais apps aparecem na fileira da Início e em que ordem.", "Which apps sit on the Home row, and in what order."), ""};
                 case 3: return new String[] {Ui.tr("Atalhos do controle", "Remote Buttons"), Ui.tr("Troque o que cada botão do controle abre: um app, uma entrada HDMI ou uma função. Vale de dentro de qualquer app.", "Change what each remote button opens: an app, an HDMI input or a function, from inside any app."), RemoteKeys.remoteName(getContext())};
                 case 4: return new String[] {Ui.tr("Meus streamings", "Services"), Ui.tr("Os streamings que você assina e o app que toca os trailers.", "The streaming services you pay for, and the app that plays trailers."), ""};
                 case 5: return new String[] {Ui.tr("Conta TMDB", "TMDB account"), Ui.tr("A chave grátis do TMDB traz as fotos, as sugestões, as categorias e os trailers.", "The free TMDB key brings the photos, picks, categories and trailers."), account()};
                 case 6: return new String[] {Ui.tr("Conta Stremio", "Stremio account"), Ui.tr("Liga a aba Continuar: o que você estava vendo no Stremio, com a barra de onde parou. Sem senha na TV: aparece um código para abrir no celular.", "Turns on the Continue tab: what you were watching in Stremio, with where you stopped. No password on the TV: a code to open on your phone."), stremioState()};
                 case 7: return new String[] {Ui.tr("Categoria inicial", "Home category"), Ui.tr("A lista que a fileira de categorias mostra primeiro. Na Início, é só andar pela fileira abaixo das abas.", "The list the category row shows first. On Home, just walk along the row under the tabs."), Recs.categoryLabel()};
-                case 8: return new String[] {Ui.tr("Abas e reprodução", "Tabs and Stremio"), Ui.tr("Ligue ou desligue as abas, escolha onde os títulos abrem, o app dos trailers, a troca do destaque, quantos títulos por aba, infantil, a saudação e o fundo cósmico.", "Turn tabs on or off, pick where titles open, the trailer app, the hero timing, titles per tab, kids titles and the greeting."), ""};
+                case 8: return new String[] {Ui.tr("Abas e reprodução", "Tabs and Stremio"), Ui.tr("Ligue ou desligue as abas, escolha onde os títulos abrem, o app dos trailers, a troca do destaque, quantos títulos por aba, infantil e a saudação.", "Turn tabs on or off, pick where titles open, the trailer app, the hero timing, titles per tab, kids titles and the greeting."), ""};
                 default: return new String[] {Ui.tr("Configurações do Android", "TV Settings"), Ui.tr("As configurações do Android TV: rede, som, imagem e apps.", "Android TV's own settings: network, sound, picture and apps."), ""};
             }
         }
@@ -439,7 +439,6 @@ public class SettingsActivity extends Activity {
                 {"Quantos títulos cada aba mostra (o Continuar mostra até 5).", "How many titles each tab shows (Continue shows up to 5)."},
                 {"Filmes e séries infantis ficam fora das sugestões e das categorias.", "Kids movies and shows stay out of the picks and the categories."},
                 {"A saudação muda com a hora (bom dia, boa tarde, boa noite, boa madrugada) e chama você pelo nome. OK para mudar o nome.", "The name after \"Welcome\" at the top of Home. OK to change it."},
-                {"Estrelas piscando, nebulosa vermelha em movimento e um anel colorido girando no que está em foco. Suave deixa só as estrelas.", "Twinkling stars, a drifting red nebula and a spinning ring of colour on the focus. Soft keeps only the stars."},
         };
 
         /** What the focused option does, and how it is now; the TMDB status and credit at the bottom. */
@@ -509,7 +508,7 @@ public class SettingsActivity extends Activity {
             return new String[] {Ui.tr("Aba Continuar (Stremio)", "Continue tab (Stremio)"), Ui.tr("Fileira de categorias", "Category row"),
                     Ui.tr("Abrir filmes e séries em", "Open movies and shows in"), Ui.tr("Trailers tocam em", "Trailers play in"),
                     Ui.tr("Trocar o destaque a cada", "Next hero title every"), Ui.tr("Títulos por aba", "Titles per tab"),
-                    Ui.tr("Infantil nas sugestões", "Kids titles in picks"), Ui.tr("Nome na saudação", "Name in the greeting"), Ui.tr("Fundo cósmico", "Space backdrop")};
+                    Ui.tr("Infantil nas sugestões", "Kids titles in picks"), Ui.tr("Nome na saudação", "Name in the greeting")};
         }
 
         private static final String[] TRAILER_APPS = {"", DeepLinks.SMARTTUBE, "com.google.android.youtube.tv"};
@@ -528,8 +527,7 @@ public class SettingsActivity extends Activity {
                     every <= 0 ? Ui.tr("Não trocar", "Never") : every + " s",
                     String.valueOf(Prefs.perTab()),
                     Prefs.noKids() ? Ui.tr("Esconder", "Hide") : Ui.tr("Mostrar", "Show"),
-                    HomeView.greeting(name),
-                    Prefs.cosmos() >= 2 ? Ui.tr("Animado", "Animated") : Prefs.cosmos() == 1 ? Ui.tr("Suave", "Soft") : Ui.tr("Desligado", "Off")};
+                    HomeView.greeting(name)};
         }
 
         private static int next(int[] all, int now, int dir) {
@@ -557,7 +555,6 @@ public class SettingsActivity extends Activity {
                 case 4: Prefs.setHeroEvery(next(HERO_EVERY, Prefs.heroEvery(), dir)); break;
                 case 5: Prefs.setPerTab(next(PER_TAB, Prefs.perTab(), dir)); Recs.get(ctx).clearCategories(); break;
                 case 6: Prefs.setNoKids(!Prefs.noKids()); Recs.get(ctx).clearCategories(); break;
-                case 8: Prefs.setCosmos(next(new int[] {2, 1, 0}, Prefs.cosmos(), dir)); break;
                 default: return;
             }
             HomeData.get(ctx).settingsChanged();
@@ -796,10 +793,10 @@ public class SettingsActivity extends Activity {
 
         // MARK: - Home Settings and Remote Buttons
 
-        private static final String[] LANGUAGES = {"auto", "pt", "en", "es", "de", "ru", "fr", "tr", "he"}, UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"};
+        private static final String[] LANGUAGES = {"auto", "pt", "en", "es", "de", "ru", "fr", "tr", "he"}, UNITS = {"auto", "C", "F"};
         private static final String[] CLOCKS = {"auto", "24h", "12h"}, STYLES = {"photos", "aurora", "google"};
         /** Home Settings: language, temperature, theme, clock, weather, city, quotes, then one row per coin. */
-        private static final int CLOCK_ROW = 3, WEATHER_ROW = 4, CITY_ROW = 5, QUOTES_ROW = 6, COIN_ROWS = 7;
+        private static final int CLOCK_ROW = 2, WEATHER_ROW = 3, CITY_ROW = 4, QUOTES_ROW = 5, COIN_ROWS = 6;
 
         private static String styleName(String style) {
             return style.equals("aurora") ? Ui.tr("Relógio e aurora", "Clock and aurora")
@@ -815,7 +812,6 @@ public class SettingsActivity extends Activity {
             List<String> l = new ArrayList<>();
             l.add(Ui.tr("Idioma", "Language"));
             l.add(Ui.tr("Temperatura", "Temperature"));
-            l.add(Ui.tr("Tema", "Theme"));
             l.add(Ui.tr("Formato do relógio", "Clock format"));
             l.add(Ui.tr("Widget do clima", "Weather widget"));
             l.add(Ui.tr("Cidade", "City"));
@@ -832,8 +828,6 @@ public class SettingsActivity extends Activity {
                     : Ui.tr("Automático", "Automatic");
             String unit = Prefs.temperature();
             v[1] = unit.equals("C") ? "°C" : unit.equals("F") ? "°F" : Ui.tr("Automática", "Automatic");
-            String theme = Prefs.theme();
-            v[2] = theme.equals("light") ? Ui.tr("Claro", "Light") : theme.equals("dark") ? Ui.tr("Escuro", "Dark") : Ui.tr("Automático", "Automatic");
             String clock = Prefs.clockFormat();
             v[CLOCK_ROW] = clock.equals("24h") ? Ui.tr("24 horas", "24-hour") : clock.equals("12h") ? Ui.tr("12 horas", "12-hour")
                     : Ui.tr("Automático", "Automatic");
@@ -912,11 +906,6 @@ public class SettingsActivity extends Activity {
                     Prefs.setTemperature(UNITS[(at + dir + UNITS.length) % UNITS.length]);
                     break;
                 }
-                case 2: {
-                    int at = java.util.Arrays.asList(THEMES).indexOf(Prefs.theme());
-                    Prefs.setTheme(THEMES[(at + dir + THEMES.length) % THEMES.length]);
-                    break;
-                }
                 case CLOCK_ROW: {
                     int at = java.util.Arrays.asList(CLOCKS).indexOf(Prefs.clockFormat());
                     Prefs.setClockFormat(CLOCKS[(at + dir + CLOCKS.length) % CLOCKS.length]);
@@ -943,6 +932,7 @@ public class SettingsActivity extends Activity {
                     .setTitle(Ui.tr("Cidade", "City"))
                     .setView(field)
                     .setPositiveButton(Ui.tr("Buscar", "Search"), (d, which) -> searchCity(field.getText().toString()))
+                    .setNeutralButton(Ui.tr("Usar minha localização", "Use my location"), (d, which) -> locateCity())
                     .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
                     .create();
             field.setOnEditorActionListener((v, action, event) -> {
@@ -951,6 +941,48 @@ public class SettingsActivity extends Activity {
                 return true;
             });
             dialog.show();
+        }
+
+        /** The city from the connection's location (the TV has no GPS), in one step. */
+        private void locateCity() {
+            cityStatus = Ui.tr("Procurando…", "Searching…");
+            invalidate();
+            new Thread(() -> {
+                String message;
+                try {
+                    String[] at = HomeData.locateByIp();
+                    Prefs.setCity(at[0], at[1], at[2]);
+                    message = "";
+                } catch (Exception e) {
+                    message = Ui.tr("Não deu para achar a localização: ", "Couldn't find the location: ") + e.getMessage();
+                    AppLog.w("locate city: " + e.getMessage());
+                }
+                String m = message;
+                handler.post(() -> {
+                    cityStatus = m;
+                    HomeData.get(getContext()).settingsChanged();
+                    invalidate();
+                    if (!m.isEmpty()) handler.postDelayed(() -> { cityStatus = ""; invalidate(); }, 4000);
+                });
+            }).start();
+        }
+
+        private static final String[] LANGUAGE_NAMES = {"Automático (idioma da TV)", "Português", "English", "Español", "Deutsch", "Русский", "Français", "Türkçe", "עברית"};
+
+        /** The language as a list to pick from, instead of stepping through it with the arrows. */
+        private void chooseLanguage() {
+            int at = Math.max(0, java.util.Arrays.asList(LANGUAGES).indexOf(Prefs.language()));
+            new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(Ui.tr("Idioma", "Language"))
+                    .setSingleChoiceItems(LANGUAGE_NAMES, at, (d, which) -> {
+                        d.dismiss();
+                        Prefs.setLanguage(LANGUAGES[which]);
+                        HomeData.get(getContext()).settingsChanged();
+                        spoken.focusMoved();
+                        invalidate();
+                    })
+                    .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                    .show();
         }
 
         /** The TMDB key (themoviedb.org > Settings > API, free): the picks and Explore need it, the QR sign-in too. */
@@ -1237,6 +1269,9 @@ public class SettingsActivity extends Activity {
                 return;
             } else if (screen == HOME_SETTINGS && focus == CITY_ROW) {
                 askCity();
+                return;
+            } else if (screen == HOME_SETTINGS && focus == 0) {
+                chooseLanguage();
                 return;
             } else if (screen == HOME_SETTINGS) {
                 adjust(1);

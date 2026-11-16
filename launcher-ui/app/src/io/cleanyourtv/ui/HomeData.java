@@ -269,6 +269,14 @@ final class HomeData {
         return out;
     }
 
+    /** The city of this connection (from its internet address: TVs have no GPS): {name, latitude, longitude}. */
+    static String[] locateByIp() throws Exception {
+        JSONObject o = new JSONObject(get("https://ipwho.is/?fields=success,city,region_code,latitude,longitude"));
+        if (!o.optBoolean("success") || o.optString("city").isEmpty()) throw new IOException("sem resposta");
+        String name = o.optString("city") + (o.optString("region_code").isEmpty() ? "" : ", " + o.optString("region_code"));
+        return new String[] {name, String.valueOf(o.optDouble("latitude")), String.valueOf(o.optDouble("longitude"))};
+    }
+
     private static String get(String url) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setConnectTimeout(6000);
