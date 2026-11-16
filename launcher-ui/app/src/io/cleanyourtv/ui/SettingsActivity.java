@@ -439,6 +439,8 @@ public class SettingsActivity extends Activity {
                 {"Quantos títulos cada aba mostra (o Continuar mostra até 5).", "How many titles each tab shows (Continue shows up to 5)."},
                 {"Filmes e séries infantis ficam fora das sugestões e das categorias.", "Kids movies and shows stay out of the picks and the categories."},
                 {"A saudação muda com a hora (bom dia, boa tarde, boa noite, boa madrugada) e chama você pelo nome. OK para mudar o nome.", "The name after \"Welcome\" at the top of Home. OK to change it."},
+                {"Mostra os jogos do computador na aba Jogos e no dock, e abre o jogo pelo controle. No computador, abra o Jogos do PC (pasta pc-games); aqui, OK procura o computador na rede e você clica em Sim na tela dele. Com ele conectado, OK desconecta.", "Shows the computer's games in the Games tab and the dock, and opens them with the remote. Start PC Games on the computer (pc-games folder); here, OK finds it on the network and you click Yes on its screen. When connected, OK disconnects."},
+                {"A entrada HDMI onde o computador está ligado: a TV muda para ela quando o jogo abre. As setas trocam.", "The HDMI input the computer is plugged into: the TV switches to it when a game opens. The arrows change it."},
         };
 
         /** What the focused option does, and how it is now; the TMDB status and credit at the bottom. */
@@ -508,7 +510,8 @@ public class SettingsActivity extends Activity {
             return new String[] {Ui.tr("Aba Continuar (Stremio)", "Continue tab (Stremio)"), Ui.tr("Fileira de categorias", "Category row"),
                     Ui.tr("Abrir filmes e séries em", "Open movies and shows in"), Ui.tr("Trailers tocam em", "Trailers play in"),
                     Ui.tr("Trocar o destaque a cada", "Next hero title every"), Ui.tr("Títulos por aba", "Titles per tab"),
-                    Ui.tr("Infantil nas sugestões", "Kids titles in picks"), Ui.tr("Nome na saudação", "Name in the greeting")};
+                    Ui.tr("Infantil nas sugestões", "Kids titles in picks"), Ui.tr("Nome na saudação", "Name in the greeting"),
+                    Ui.tr("Jogos do PC", "PC games"), Ui.tr("Entrada do computador", "Computer's input")};
         }
 
         private static final String[] TRAILER_APPS = {"", DeepLinks.SMARTTUBE, "com.google.android.youtube.tv"};
@@ -527,7 +530,10 @@ public class SettingsActivity extends Activity {
                     every <= 0 ? Ui.tr("Não trocar", "Never") : every + " s",
                     String.valueOf(Prefs.perTab()),
                     Prefs.noKids() ? Ui.tr("Esconder", "Hide") : Ui.tr("Mostrar", "Show"),
-                    HomeView.greeting(name)};
+                    HomeView.greeting(name),
+                    Games.configured() ? (Prefs.gamesName().isEmpty() ? Ui.tr("Conectado", "Connected") : Prefs.gamesName())
+                            : Ui.tr("Não conectado", "Not connected"),
+                    Prefs.gamesInput()};
         }
 
         private static int next(int[] all, int now, int dir) {
@@ -555,6 +561,14 @@ public class SettingsActivity extends Activity {
                 case 4: Prefs.setHeroEvery(next(HERO_EVERY, Prefs.heroEvery(), dir)); break;
                 case 5: Prefs.setPerTab(next(PER_TAB, Prefs.perTab(), dir)); Recs.get(ctx).clearCategories(); break;
                 case 6: Prefs.setNoKids(!Prefs.noKids()); Recs.get(ctx).clearCategories(); break;
+                case 9: {
+                    List<String> names = new ArrayList<>();
+                    for (HomeApps.Item it : HomeApps.allInputs(ctx)) if (it.inputId != null) names.add(it.label);
+                    if (names.isEmpty()) return;
+                    int at = names.indexOf(Prefs.gamesInput());
+                    Prefs.setGamesInput(names.get(at < 0 ? 0 : (at + dir + names.size()) % names.size()));
+                    break;
+                }
                 default: return;
             }
             HomeData.get(ctx).settingsChanged();
@@ -1262,6 +1276,22 @@ public class SettingsActivity extends Activity {
                 openPicker(keysScroll + focus + 1);
             } else if (screen == MASTER && focus == GREET_ROW) {
                 askGreeting();
+                return;
+            } else if (screen == MASTER && focus == GREET_ROW + 1) {
+                if (Games.configured()) {
+                    new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                            .setTitle(Ui.tr("Desconectar o computador?", "Disconnect the computer?"))
+                            .setMessage(Ui.tr("A aba Jogos e o dock de jogos somem até você conectar de novo.", "The Games tab and dock go away until you connect again."))
+                            .setPositiveButton(Ui.tr("Desconectar", "Disconnect"), (d, which) -> {
+                                Games.forget();
+                                HomeData.get(getContext()).settingsChanged();
+                                invalidate();
+                            })
+                            .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                            .show();
+                } else {
+                    Games.pair(activity, this::invalidate);
+                }
                 return;
             } else if (screen == MASTER) {
                 adjust(1);

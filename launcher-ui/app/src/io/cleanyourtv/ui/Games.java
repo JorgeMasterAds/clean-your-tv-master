@@ -53,11 +53,11 @@ final class Games {
         Toast.makeText(a, Ui.tr("Buscando os jogos do PC…", "Getting the PC's games…"), Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             try {
-                JSONArray list = new JSONArray(request("GET", "/api/games?t=" + token()));
+                List<JSONObject> list = objects(new JSONArray(request("GET", "/api/games?t=" + token())));
                 List<Tmdb.Title> titles = new ArrayList<>();
                 Map<Integer, String> ids = new HashMap<>();
-                for (int i = 0; i < list.length(); i++) {
-                    JSONObject g = list.getJSONObject(i);
+                for (int i = 0; i < list.size(); i++) {
+                    JSONObject g = list.get(i);
                     String cover = g.optBoolean("cover") ? base() + "/api/cover?id=" + g.getString("id") + "&v=" + g.optLong("v") + "&t=" + token() : "";
                     titles.add(new Tmdb.Title("game", i, g.getString("name"), cover, "", g.optString("source"), 0));
                     ids.put(i, g.getString("id"));
@@ -74,16 +74,114 @@ final class Games {
         }).start();
     }
 
+    /**
+     * Settings › Jogos do PC: finds the computer running pc-games on the network (a UDP broadcast), then asks it to
+     * connect; the person allows it on the PC's screen and the TV keeps the address and the access code.
+     */
+    static void pair(Activity a, Runnable done) {
+        Toast.makeText(a, Ui.tr("Procurando o computador na rede…", "Looking for the computer on the network…"), Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String host = null, name = "";
+            try (java.net.DatagramSocket s = new java.net.DatagramSocket()) {
+                s.setBroadcast(true);
+                s.setSoTimeout(1200);
+                byte[] ask = "CYT-GAMES?".getBytes("UTF-8");
+                for (int round = 0; round < 3 && host == null; round++) {
+                    s.send(new java.net.DatagramPacket(ask, ask.length, java.net.InetAddress.getByName("255.255.255.255"), 48501));
+                    try {
+                        byte[] buf = new byte[512];
+                        java.net.DatagramPacket in = new java.net.DatagramPacket(buf, buf.length);
+                        s.receive(in);
+                        JSONObject o = new JSONObject(new String(buf, 0, in.getLength(), "UTF-8"));
+                        host = in.getAddress().getHostAddress() + ":" + o.optInt("port", 48500);
+                        name = o.optString("name");
+                    } catch (java.net.SocketTimeoutException ignored) {
+                    }
+                }
+            } catch (Exception e) {
+                AppLog.w("games find: " + e.getMessage());
+            }
+            if (host == null) {
+                MAIN.post(() -> Toast.makeText(a, Ui.tr("Não achei o computador. Abra o Jogos do PC nele (pasta pc-games) e use a mesma rede.",
+                        "Couldn't find the computer. Start PC Games on it (pc-games folder) and use the same network."), Toast.LENGTH_LONG).show());
+                return;
+            }
+            String pc = name.isEmpty() ? host : name;
+            MAIN.post(() -> Toast.makeText(a, Ui.tr("Achei " + pc + ". Clique em Sim na tela do computador.",
+                    "Found " + pc + ". Click Yes on the computer's screen."), Toast.LENGTH_LONG).show());
+            try {
+                HttpURLConnection c = (HttpURLConnection) new URL("http://" + host + "/api/pair?tv="
+                        + URLEncoder.encode(android.os.Build.MODEL, "UTF-8")).openConnection();
+                c.setConnectTimeout(4000);
+                c.setReadTimeout(90_000);   // the person walks to the computer and clicks Yes
+                int code = c.getResponseCode();
+                if (code != 200) throw new IOException(code == 403 ? Ui.tr("o computador não permitiu", "the computer said no") : "HTTP " + code);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                try (InputStream in = c.getInputStream()) {
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
+                c.disconnect();
+                JSONObject o = new JSONObject(out.toString("UTF-8"));
+                String token = o.getString("token");
+                String h = host;
+                MAIN.post(() -> {
+                    Prefs.setGames(h, token, Prefs.gamesInput());
+                    Prefs.setGamesName(pc);
+                    HomeData.get(a).settingsChanged();
+                    Toast.makeText(a, Ui.tr("Conectado a " + pc + ". Os jogos aparecem na aba Jogos e no dock.",
+                            "Connected to " + pc + ". The games show in the Games tab and the dock."), Toast.LENGTH_LONG).show();
+                    if (done != null) done.run();
+                });
+            } catch (Exception e) {
+                AppLog.w("games pair: " + e.getMessage());
+                MAIN.post(() -> Toast.makeText(a, Ui.tr("Não conectou: ", "Didn't connect: ") + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        }).start();
+    }
+
+    /** Forgets the computer: the Games tab and the dock go away. */
+    static void forget() {
+        Prefs.setGames("", "", Prefs.gamesInput());
+        Prefs.setGamesName("");
+    }
+
     /** One game for the dock on the home screen: its cover is already loaded (or null: the name is shown). */
     static final class Game {
-        final String id, name;
+        final String id, name, art;
         final android.graphics.Bitmap cover;
 
-        Game(String id, String name, android.graphics.Bitmap cover) {
+        Game(String id, String name, android.graphics.Bitmap cover, String art) {
             this.id = id;
             this.name = name;
             this.cover = cover;
+            this.art = art;
         }
+    }
+
+    /**
+     * The PC sends the latest played first; once you moved games on the dock, your order wins. Games the PC lists that
+     * your order doesn't know yet (new, or just played for the first time) go in front.
+     */
+    static void sortByOrder(List<JSONObject> list) {
+        String saved = Prefs.gamesOrder();
+        if (saved.isEmpty()) return;
+        List<String> order = java.util.Arrays.asList(saved.split(","));
+        java.util.Collections.sort(list, (a, b) -> Integer.compare(order.indexOf(a.optString("id")), order.indexOf(b.optString("id"))));
+    }
+
+    static void saveOrder(List<Game> games) {
+        StringBuilder b = new StringBuilder();
+        for (Game g : games) b.append(b.length() == 0 ? "" : ",").append(g.id);
+        Prefs.setGamesOrder(b.toString());
+    }
+
+    private static List<JSONObject> objects(JSONArray a) throws org.json.JSONException {
+        List<JSONObject> out = new ArrayList<>();
+        for (int i = 0; i < a.length(); i++) out.add(a.getJSONObject(i));
+        sortByOrder(out);
+        return out;
     }
 
     /** The PC's games with their covers, for the dock under Inputs and Shortcuts; null when the PC doesn't answer. */
@@ -91,13 +189,13 @@ final class Games {
         new Thread(() -> {
             List<Game> out = null;
             try {
-                JSONArray list = new JSONArray(request("GET", "/api/games?t=" + token()));
+                List<JSONObject> list = objects(new JSONArray(request("GET", "/api/games?t=" + token())));
                 out = new ArrayList<>();
-                for (int i = 0; i < list.length(); i++) {
-                    JSONObject g = list.getJSONObject(i);
+                for (JSONObject g : list) {
                     android.graphics.Bitmap cover = g.optBoolean("cover")
                             ? Images.fetch(base() + "/api/cover?id=" + g.getString("id") + "&v=" + g.optLong("v") + "&t=" + token()) : null;
-                    out.add(new Game(g.getString("id"), g.getString("name"), cover));
+                    out.add(new Game(g.getString("id"), g.getString("name"), cover,
+                            base() + "/api/art?id=" + URLEncoder.encode(g.getString("id"), "UTF-8") + "&t=" + token()));
                 }
             } catch (Exception e) {
                 AppLog.w("games dock: " + e.getMessage());

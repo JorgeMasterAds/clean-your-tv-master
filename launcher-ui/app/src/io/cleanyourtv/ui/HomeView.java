@@ -199,7 +199,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private int gameIndex;
     private float gameScroll;
     private long gamesAt = -600_000;
-    private boolean gamesLoading;
+    private boolean gamesLoading, gameMoving;
+    private final Map<String, Backdrop> gameArt = new java.util.LinkedHashMap<>();
+    private final java.util.Set<String> gameArtLoading = new java.util.HashSet<>();
     // The category row under the tabs (Trailers, Top 10, Marvel...): focusing a pill shows that list.
     private static final float CHIP_TOP = 248, CHIP_H = 54, CHIP_GAP = 14;
     private int chipIndex;
@@ -481,7 +483,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             scene.setOffset(0, kind == DRAWER || kind == STATUS ? 0 : getTranslationY());
             switch (kind) {
                 case SKY: drawSky(c); break;
-                case HERO: drawLightTop(c); drawChips(c); drawCatMenu(c); break;
+                case HERO:
+                    drawLightTop(c);
+                    if (zone != Z_GAMES) {
+                        drawChips(c);
+                        drawCatMenu(c);
+                    }
+                    break;
                 case STATUS: drawLightButtons(c); break;
                 case PLATTER: drawPlatter(c); break;
                 case TILES: drawTiles(c); break;
@@ -888,8 +896,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             // into view when Down is pressed on the dock.
             // Down once more on the row: everything rises again and the games dock comes up under it.
             float g = smoothstep(0, 1, Ui.clamp(gamesRow.value)), lift = GAMES_LIFT * k * g;
-            show(heroLayer, home * (1 - g), 0);
-            show(status, home * (1 - g), 0);
+            show(heroLayer, home, 0);
+            show(status, home, 0);
             // The dock rests at the foot of the screen and rises to make room for the row.
             float drop = HERO_DOCK_DROP * k * (1 - dc);
             show(platter, home * (1 - g), drop - lift);
@@ -1742,12 +1750,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         hourTemp.setColor(drawerInk(0.95f));
         pricePaint.setColor(drawerInk(0.95f));
         float titleBase = ROW_TITLE * k;
-        if (drawerInputs > 0) drawRowTitle(c, Ui.tr("Entradas", "Inputs"), drawerRects[0], titleBase);
-        if (drawerInputs < drawerItems.size()) drawRowTitle(c, Ui.tr("Atalhos", "Shortcuts"), drawerRects[drawerInputs], titleBase);
-        int top = -1;
-        for (int i = 0; i < drawerItems.size(); i++) if (drawerFocus[i].value > 0.02f && (top < 0 || drawerFocus[i].value > drawerFocus[top].value)) top = i;
-        for (int i = 0; i < drawerItems.size(); i++) if (i != top) drawDrawerTile(c, i);
-        if (top >= 0) drawDrawerTile(c, top);
+        if (zone != Z_GAMES) {   // on the games dock only the games show
+            if (drawerInputs > 0) drawRowTitle(c, Ui.tr("Entradas", "Inputs"), drawerRects[0], titleBase);
+            if (drawerInputs < drawerItems.size()) drawRowTitle(c, Ui.tr("Atalhos", "Shortcuts"), drawerRects[drawerInputs], titleBase);
+            int top = -1;
+            for (int i = 0; i < drawerItems.size(); i++) if (drawerFocus[i].value > 0.02f && (top < 0 || drawerFocus[i].value > drawerFocus[top].value)) top = i;
+            for (int i = 0; i < drawerItems.size(); i++) if (i != top) drawDrawerTile(c, i);
+            if (top >= 0) drawDrawerTile(c, top);
+        }
         if (picksOn()) {
             drawGames(c);
             return;
@@ -1792,8 +1802,45 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void leaveGames() {
+        gameMoving = false;
         zone = Z_DRAWER;
         gamesRow.target = 0;
+        heroDirty = drawerDirty = true;
+        heroFollow();   // the title's photo comes back
+    }
+
+    private void stopGameMove() {
+        gameMoving = false;
+        Games.saveOrder(gameItems);
+        drawerDirty = true;
+        retarget(false);
+        click.move();
+        showGameArt();
+    }
+
+    /** The focused game fills the background: its wide art from the PC, or its cover when it has none. */
+    private void showGameArt() {
+        if (zone != Z_GAMES || gameIndex >= gameItems.size()) return;
+        Games.Game g = gameItems.get(gameIndex);
+        Backdrop have = gameArt.get(g.id);
+        if (have != null) {
+            showBackdrop(have);
+            return;
+        }
+        if (!gameArtLoading.add(g.id)) return;
+        new Thread(() -> {
+            Bitmap b = g.art == null ? null : Images.fetch(g.art);
+            if (b == null && g.cover != null) b = g.cover.copy(Bitmap.Config.ARGB_8888, false);   // make() recycles what it gets
+            Backdrop made = b == null ? null : Backdrop.make(b, true);
+            post(() -> {
+                gameArtLoading.remove(g.id);
+                if (made == null) return;
+                gameArt.put(g.id, made);
+                while (gameArt.size() > 6) gameArt.remove(gameArt.keySet().iterator().next());
+                if (zone == Z_GAMES && gameIndex < gameItems.size() && gameItems.get(gameIndex) == g) showBackdrop(made);
+                wake();
+            });
+        }).start();
     }
 
     private int nearestGame(float x) {
@@ -1836,7 +1883,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         Games.Game g = gameItems.get(i);
         float f = Ui.clamp(gameFocus[i].value), s = 1 + 0.08f * f;
         RectF base = gameRects[i];
-        float cx = base.centerX() - gameScroll, cy = base.centerY();
+        boolean held = gameMoving && i == gameIndex;
+        float cx = base.centerX() - gameScroll, cy = base.centerY() - (held ? 22 * k : 0);
         if (cx + base.width() < 0 || cx - base.width() > getWidth()) return;
         cell.set(cx - base.width() * s / 2, cy - base.height() * s / 2, cx + base.width() * s / 2, cy + base.height() * s / 2);
         float r = 16 * k * s;
@@ -1858,7 +1906,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             drawerLabel.setTextSize(23 * k);
         }
         if (f > 0.01f) {
-            gameRing.setColor(Ui.alpha(WHITE, f));
+            gameRing.setColor(held ? 0xFFFFD60A : Ui.alpha(WHITE, f));   // yellow while it is being moved
             gameRing.setStrokeWidth(5 * k);
             c.drawRoundRect(cell, r, r, gameRing);
         }
@@ -2387,6 +2435,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (sheetOpen) {
             closeSheet();
+        } else if (zone == Z_GAMES && gameMoving) {
+            stopGameMove();
+            return;
         } else if (zone == Z_GAMES) {
             leaveGames();
             retarget(false);
@@ -2463,8 +2514,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 if (dx != 0) {
                     int next = Math.max(0, Math.min(gameItems.size() - 1, gameIndex + (Ui.he ? -dx : dx)));
                     if (next == gameIndex) return;
+                    if (gameMoving) {   // moving a game: it swaps places with its neighbour
+                        java.util.Collections.swap(gameItems, gameIndex, next);
+                        Games.saveOrder(gameItems);
+                    }
                     gameIndex = next;
                     scrollGames();
+                    if (!gameMoving) showGameArt();
+                } else if (gameMoving) {
+                    return;
                 } else if (dy < 0) {
                     leaveGames();
                 } else {
@@ -2495,6 +2553,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     gamesRow.target = 1;
                     if (drawerIndex < drawerRects.length) gameIndex = nearestGame(drawerRects[drawerIndex].centerX());
                     scrollGames();
+                    heroDirty = drawerDirty = true;
+                    showGameArt();
                 } else if (talkBack() && !widgets().isEmpty()) {
                     // Only with TalkBack: the widgets are there to be read, and this is how it gets to them.
                     zone = WIDGETS;
@@ -2571,6 +2631,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             it = statusItems.get(statusIndex);
             r = statusRects[statusIndex];
         } else if (zone == Z_GAMES) {
+            if (gameMoving) {
+                stopGameMove();
+                return;
+            }
             if (gameIndex >= gameItems.size()) return;
             Games.Game g = gameItems.get(gameIndex);
             click.open();
@@ -2647,7 +2711,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private boolean canHold() {
-        return heldApp() != null;
+        return zone == Z_GAMES ? !gameItems.isEmpty() && !gameMoving : heldApp() != null;
     }
 
     /**
@@ -2657,6 +2721,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void appMenu() {
         handler.removeCallbacks(holdStart);
         holdArmed = false;
+        if (zone == Z_GAMES) {   // OK held on a game: move it with ← →, OK or Back to drop it
+            okHeld = true;
+            gameMoving = true;
+            drawerDirty = true;
+            click.open();
+            showToast(Ui.tr("Mover o jogo: ← →. OK para soltar.", "Move the game: ← →. OK to drop it."));
+            return;
+        }
         HomeApps.Item it = heldApp();
         if (reordering || it == null) return;
         okHeld = true;      // the release of this press opens nothing
@@ -3332,7 +3404,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // Text tabs (the selected one in bold, in the main text color); with focus on the tabs, the selected one gets
         // the white pill with a shadow and grows a little (the tvOS focus).
         float focusTab = Ui.clamp(topFocus[tab].value);
-        for (int i = 0; i < NT; i++) {
+        for (int i = 0; i < NT && zone != Z_GAMES; i++) {
             if (!tabShown(i)) continue;
             RectF r = topRects[i];
             boolean on = i == tab || i == GAMES_TAB;    // Games never becomes the selected tab, but shows the focus pill
@@ -3420,7 +3492,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             heroInfo.setShadowLayer(10 * k, 0, 2 * k, 0x80000000);
         }
         drawHeaderInfo(c);
-        if (catMenu) return;
+        if (catMenu || zone == Z_GAMES) return;   // on the games dock: only the greeting, the weather and the time
         Recs.Pick p = heroPick();
         if (p == null && tab == CAT_TAB && chipsOn()) {
             c.drawText(Ui.tr("Carregando…", "Loading…"), MARGIN * k, 560 * k, heroTitle);
@@ -3433,10 +3505,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (p.cont) {
             // "Continue watching" badge above the title, so it never reads like a suggestion.
             String badge = "CONTINUAR ASSISTINDO";
-            if (heroBadge == null) heroBadge = Ui.text(Ui.semibold, 17 * k, 0xFFFFFFFF);
+            if (heroBadge == null) heroBadge = Ui.text(Ui.semibold, 17 * k, L_INK);
             float bw = heroBadge.measureText(badge) + 24 * k, bh = 30 * k, top = 432 * k;
             fill.setShader(null);
-            fill.setColor(0xFFE50914);   // red
+            fill.setColor(0xFFFFFFFF);   // white with dark text: red read like "live"
             tmp.set(x, top, x + bw, top + bh);
             c.drawRoundRect(tmp, 6 * k, 6 * k, fill);
             c.drawText(badge, x + 12 * k, top + bh / 2 + Ui.halfCap(heroBadge), heroBadge);

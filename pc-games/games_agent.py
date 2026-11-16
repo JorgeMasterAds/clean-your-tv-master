@@ -228,7 +228,7 @@ def scan(cfg):
         if not (in_games or store):
             continue
         source = "Epic" if "epicgames" in both else "Riot" if "launch-product" in both else "Steam" if "steam://" in both else "PC"
-        add({"name": pretty(l["name"]), "source": source, "launch": l["file"]}, os.path.normcase(target) + "|" + args.lower())
+        add({"name": pretty(l["name"]), "source": source, "launch": l["file"], "target": target}, os.path.normcase(target) + "|" + args.lower())
     for g in epic_games() + steam_games() + battlenet():
         add(g, g["launch"].lower())
     for g in games:   # stable ids: the TV keeps covers by address, so an id must always mean the same game
@@ -318,6 +318,121 @@ def make_cover(g, cfg):
         return None
 
 
+# MARK: - Wide art for the TV's background (Steam's library hero), and when each game was last played
+
+ART = os.path.join(HOME, "game-art")
+ART_OWN = os.path.join(HOME, "game-art-own")
+PLAYED = os.path.join(HOME, "games-played.json")
+
+
+def make_art(g, cfg):
+    """A wide picture of the game for the TV's background: your own (game-art-own/<name>.jpg) or Steam's hero."""
+    for d in (ART_OWN, ART):
+        p = os.path.join(d, norm(g["name"]) + ".jpg")
+        if os.path.exists(p) and os.path.getsize(p) > 1000:
+            return p
+    miss = os.path.join(ART, norm(g["name"]) + ".none")
+    if os.path.exists(miss) and time.time() - os.path.getmtime(miss) < 7 * 86400:
+        return None
+    os.makedirs(ART, exist_ok=True)
+    appid = g.get("steam") or steam_id_for(cfg.get("search", {}).get(g["name"], g["name"]))
+    for url in ["https://cdn.cloudflare.steamstatic.com/steam/apps/%s/library_hero.jpg" % appid,
+                "https://cdn.cloudflare.steamstatic.com/steam/apps/%s/page_bg_generated_v6b.jpg" % appid] if appid else []:
+        try:
+            data = fetch(url)
+            if data and len(data) > 5000:
+                path = os.path.join(ART, norm(g["name"]) + ".jpg")
+                with open(path, "wb") as f:
+                    f.write(data)
+                return path
+        except Exception:
+            pass
+    open(miss, "w").close()   # no wide art: the TV uses the cover; asked again in a week
+    return None
+
+
+def played_on_tv():
+    try:
+        with open(PLAYED, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def mark_played(g):
+    d = played_on_tv()
+    d[g["id"]] = int(time.time())
+    try:
+        with open(PLAYED, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+    except OSError as e:
+        log("played: %s" % e)
+
+
+def steam_last_played():
+    """appid -> last time played, from Steam's own record (localconfig.vdf of each Steam account on this PC)."""
+    out = {}
+    try:
+        import winreg
+        k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")
+        steam = winreg.QueryValueEx(k, "SteamPath")[0]
+    except Exception:
+        return out
+    root = os.path.join(steam, "userdata")
+    for user in os.listdir(root) if os.path.isdir(root) else []:
+        vdf = os.path.join(root, user, "config", "localconfig.vdf")
+        try:
+            with open(vdf, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        for m in re.finditer(r'"(\d+)"\s*\{[^{}]*?"LastPlayed"\s+"(\d+)"', text):
+            out[m.group(1)] = max(out.get(m.group(1), 0), int(m.group(2)))
+    return out
+
+
+def windows_last_run():
+    """Path -> last run, from Windows' own list of programs and shortcuts opened (UserAssist, names in ROT13)."""
+    import codecs
+    out = {}
+    try:
+        import winreg
+        base = r"Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist"
+        top = winreg.OpenKey(winreg.HKEY_CURRENT_USER, base)
+        for i in range(winreg.QueryInfoKey(top)[0]):
+            try:
+                k = winreg.OpenKey(top, winreg.EnumKey(top, i) + "\\Count")
+            except OSError:
+                continue
+            for j in range(winreg.QueryInfoKey(k)[1]):
+                name, data, _ = winreg.EnumValue(k, j)
+                if not isinstance(data, bytes) or len(data) < 68:
+                    continue
+                ft = int.from_bytes(data[60:68], "little")
+                if ft:
+                    path = os.path.normcase(codecs.decode(name, "rot13"))
+                    out[path] = max(out.get(path, 0), int(ft / 10_000_000 - 11644473600))
+    except Exception as e:
+        log("userassist: %s" % e)
+    return out
+
+
+def last_played(cfg, items):
+    """Each game's last play (0 = never seen): opened from the TV, Steam's record, or Windows' record."""
+    tv, steam, win = played_on_tv(), steam_last_played(), windows_last_run()
+    out = {}
+    for g in items:
+        t = tv.get(g["id"], 0)
+        if g.get("steam"):
+            t = max(t, steam.get(g["steam"], 0))
+        launch = os.path.normcase(g.get("launch", ""))
+        for key in (launch, os.path.normcase(g.get("target", ""))):
+            if key:
+                t = max(t, win.get(key, 0), max((v for p, v in win.items() if p.endswith(os.path.basename(key)) and len(os.path.basename(key)) > 4), default=0))
+        out[g["id"]] = t
+    return out
+
+
 # MARK: - Server
 
 STATE = {"games": [], "at": 0}
@@ -335,6 +450,7 @@ def games(cfg, fresh=False):
 def warm_covers(cfg):
     for g in games(cfg):
         make_cover(g, cfg)
+        make_art(g, cfg)
 
 
 def private(addr):
@@ -439,13 +555,24 @@ def handler(cfg):
             q = urllib.parse.parse_qs(u.query)
             if u.path == "/api/ping":
                 return self.send(200, json.dumps({"ok": True, "name": socket.gethostname()}).encode())
+            if u.path == "/api/pair" and private(self.client_address[0]):
+                # A TV found this PC on the network and asks to connect: the person allows it on the PC's screen.
+                tv = ((q.get("tv") or [""])[0] or "TV")[:40]
+                if not ask_pair(tv, self.client_address[0]):
+                    return self.send(403, b'{"error":"denied"}')
+                body = {"token": cfg["token"], "name": socket.gethostname(), "port": int(cfg["port"])}
+                return self.send(200, json.dumps(body).encode())
             if not self.allowed(q):
                 return self.send(403, b'{"error":"forbidden"}')
             if u.path == "/api/games" and method == "GET":
+                items = games(cfg, fresh="fresh" in q)
+                played = last_played(cfg, items)
+                items = sorted(items, key=lambda g: (-played.get(g["id"], 0), g["name"].lower()))   # latest played first
                 body = [{"id": g["id"], "name": g["name"], "source": g["source"],
                          "cover": bool(make_cover(g, cfg)),   # quick when cached; a new cover is made here
-                         "v": int(os.path.getmtime(cover_path(g))) if os.path.exists(cover_path(g)) else 0}
-                        for g in games(cfg, fresh="fresh" in q)]
+                         "v": int(os.path.getmtime(cover_path(g))) if os.path.exists(cover_path(g)) else 0,
+                         "played": played.get(g["id"], 0)}
+                        for g in items]
                 return self.send(200, json.dumps(body, ensure_ascii=False).encode("utf-8"))
             gid = (q.get("id") or [""])[0]
             g = next((x for x in games(cfg) if x["id"] == gid), None)
@@ -453,6 +580,12 @@ def handler(cfg):
                 p = make_cover(g, cfg) if g else None
                 if not p:
                     return self.send(404, b'{"error":"no cover"}')
+                with open(p, "rb") as f:
+                    return self.send(200, f.read(), "image/jpeg")
+            if u.path == "/api/art" and method == "GET":
+                p = make_art(g, cfg) if g else None
+                if not p:
+                    return self.send(404, b'{"error":"no art"}')
                 with open(p, "rb") as f:
                     return self.send(200, f.read(), "image/jpeg")
             if u.path == "/api/restore" and method == "POST":
@@ -463,6 +596,7 @@ def handler(cfg):
                     return self.send(404, b'{"error":"no such game"}')
                 try:
                     launch(g, cfg)
+                    mark_played(g)
                 except OSError as e:
                     return self.send(500, json.dumps({"error": str(e)}).encode())
                 return self.send(200, json.dumps({"ok": True, "name": g["name"]}, ensure_ascii=False).encode("utf-8"))
@@ -474,6 +608,46 @@ def handler(cfg):
         def do_POST(self):
             self.route("POST")
     return H
+
+
+PAIR_LOCK = threading.Lock()
+
+
+def ask_pair(tv, ip):
+    """Windows dialog on top of everything: Yes gives that TV the access code. One question at a time."""
+    if not PAIR_LOCK.acquire(blocking=False):
+        return False
+    try:
+        import ctypes
+        text = ("A TV \"%s\" (%s) quer mostrar os jogos deste computador e abri-los pelo controle.\n\n"
+                "Permitir?" % (tv, ip))
+        # MB_YESNO | MB_ICONQUESTION | MB_TOPMOST | MB_SETFOREGROUND
+        return ctypes.windll.user32.MessageBoxW(None, text, "Jogos do PC na TV", 0x4 | 0x20 | 0x40000 | 0x10000) == 6
+    except Exception as e:
+        log("pair: %s" % e)
+        return False
+    finally:
+        PAIR_LOCK.release()
+
+
+def answer_discovery(cfg):
+    """The TV looks for this PC with a broadcast ("CYT-GAMES?") on UDP; the answer says where the agent listens."""
+    port = int(cfg.get("discovery_port", 48501))
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind(("0.0.0.0", port))
+    except OSError as e:
+        log("discovery off: %s" % e)
+        return
+    reply = json.dumps({"name": socket.gethostname(), "port": int(cfg["port"])}).encode()
+    while True:
+        try:
+            data, addr = s.recvfrom(256)
+            if data.strip() == b"CYT-GAMES?" and private(addr[0]):
+                s.sendto(reply, addr)
+        except OSError:
+            pass
 
 
 def local_ip():
@@ -505,6 +679,7 @@ def main():
         print(json.dumps({"games_pc": {"host": "%s:%d" % (local_ip(), cfg["port"]), "token": cfg["token"], "input": "PC"}}))
         return
     threading.Thread(target=warm_covers, args=(cfg,), daemon=True).start()
+    threading.Thread(target=answer_discovery, args=(cfg,), daemon=True).start()
     if os.path.exists(SAVED) and not game_running(cfg):   # the PC was turned off mid-game: screens back first
         restore_screens()
     elif os.path.exists(SAVED):

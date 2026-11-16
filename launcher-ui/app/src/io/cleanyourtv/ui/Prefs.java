@@ -158,6 +158,12 @@ final class Prefs {
     static String gamesHost() { return sp().getString("gamesHost", "").trim(); }
     static String gamesToken() { return sp().getString("gamesToken", "").trim(); }
     static String gamesInput() { return sp().getString("gamesInput", "PC"); }
+    /** The order you gave the games on the dock (ids, comma-separated); empty = latest played first, from the PC. */
+    static String gamesOrder() { return sp().getString("gamesOrder", ""); }
+    static void setGamesOrder(String ids) { sp().edit().putString("gamesOrder", ids).apply(); }
+    static String gamesName() { return sp().getString("gamesName", ""); }
+    static void setGamesName(String name) { sp().edit().putString("gamesName", name).apply(); }
+    static void setGamesInput(String input) { sp().edit().putString("gamesInput", input).apply(); }
     static void setGames(String host, String token, String input) {
         sp().edit().putString("gamesHost", host).putString("gamesToken", token).putString("gamesInput", input.isEmpty() ? "PC" : input).apply();
         version++;
