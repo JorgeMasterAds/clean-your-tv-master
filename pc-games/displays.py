@@ -10,6 +10,7 @@ import ctypes
 import json
 import os
 import subprocess
+import time
 from ctypes import wintypes
 
 user32 = ctypes.windll.user32 if os.name == "nt" else None
@@ -127,30 +128,85 @@ def tv_only(tv_monitor, saved_path):
     return ""
 
 
+def hw(monitor):
+    """The monitor's model id (GSM76FA, TOL2881): stays the same when Windows renumbers DISPLAY1, DISPLAY2..."""
+    parts = (monitor or "").split("\\")
+    return parts[1].upper() if len(parts) > 1 else (monitor or "").upper()
+
+
+def _attached_physical():
+    return [d for d in devices() if d["attached"] and physical(d)]
+
+
 def restore(saved_path):
-    """Puts back the layout saved before the game: same screens, positions and main screen."""
+    """
+    Puts back the layout saved before the game. Windows may renumber the screens (the TV became DISPLAY1 once), so
+    nothing here goes by name: Windows' own "extend" brings every screen back as it last was, then each monitor gets
+    its saved size, position and main-screen role by its model id.
+    """
     if not os.path.exists(saved_path):
         return False
     with open(saved_path, encoding="utf-8") as f:
         layout = json.load(f)
+    want = {hw(d["monitor"]): d for d in layout if d.get("monitor")}
+    physical_saved = [d for d in layout if d.get("monitor")]
+    subprocess.run(["DisplaySwitch.exe", "/extend"], creationflags=0x08000000)
+    for _ in range(20):   # up to 10 s for the monitors to come back
+        time.sleep(0.5)
+        if len(_attached_physical()) >= min(2, len(physical_saved)):
+            break
+    time.sleep(1.5)
+    now = {}
+    for d in devices():
+        if d["attached"] and hw(d["monitor"]) in want and hw(d["monitor"]) not in now:
+            now[hw(d["monitor"])] = d
     primary = next((d for d in layout if d["primary"]), None)
-    px, py = (primary["x"], primary["y"]) if primary else (0, 0)
-    for d in sorted(layout, key=lambda d: not d["primary"]):
-        dm = mode(d["name"]) or mode(d["name"], ENUM_REGISTRY)
-        if not dm:
-            continue
-        dm.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY | DM_BITSPERPEL
-        dm.dmPositionX, dm.dmPositionY = d["x"] - px, d["y"] - py
-        dm.dmPelsWidth, dm.dmPelsHeight = d["w"], d["h"]
-        dm.dmDisplayFrequency, dm.dmBitsPerPel = d["hz"], d["bits"] or 32
-        flags = CDS_UPDATEREGISTRY | CDS_NORESET | (CDS_SET_PRIMARY if d["primary"] else 0)
-        _set(d["name"], dm, flags)
-    _apply()
-    ok = all(any(x["name"] == d["name"] and x["attached"] for x in devices()) for d in layout)
-    if not ok:   # a monitor didn't come back: Windows' own "extend" brings every screen back
-        subprocess.run(["DisplaySwitch.exe", "/extend"], creationflags=0x08000000)
+    if primary and hw(primary["monitor"]) in now and len(now) == len(want):
+        px, py = primary["x"], primary["y"]
+        for key in sorted(now, key=lambda key: not want[key]["primary"]):
+            d, s = now[key], want[key]
+            dm = mode(d["name"])
+            if not dm:
+                continue
+            dm.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY | DM_BITSPERPEL
+            dm.dmPositionX, dm.dmPositionY = s["x"] - px, s["y"] - py
+            dm.dmPelsWidth, dm.dmPelsHeight = s["w"], s["h"]
+            dm.dmDisplayFrequency, dm.dmBitsPerPel = s["hz"], s["bits"] or 32
+            _set(d["name"], dm, CDS_UPDATEREGISTRY | CDS_NORESET | (CDS_SET_PRIMARY if s["primary"] else 0))
+        _apply()
     os.remove(saved_path)
     return True
+
+
+def wait_tv_only(tv_monitor, seconds=12):
+    """After the switch: waits until the TV is the main screen and the only physical one, and a little more for the
+    picture to settle, so the game opens its window there and not on a screen that is going away."""
+    for _ in range(int(seconds * 2)):
+        tv = find_tv(tv_monitor)
+        others = [d for d in _attached_physical() if hw(d["monitor"]) != hw(tv["monitor"])] if tv else []
+        if tv and tv["primary"] and tv["attached"] and not others:
+            time.sleep(3)
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def processes():
+    """[(pid, path)] of every process this user can see."""
+    arr = (wintypes.DWORD * 4096)()
+    needed = wintypes.DWORD()
+    psapi.EnumProcesses(ctypes.byref(arr), ctypes.sizeof(arr), ctypes.byref(needed))
+    out = []
+    for pid in arr[:needed.value // ctypes.sizeof(wintypes.DWORD)]:
+        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            continue
+        buf = ctypes.create_unicode_buffer(1024)
+        size = wintypes.DWORD(1024)
+        if kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+            out.append((int(pid), buf.value))
+        kernel32.CloseHandle(h)
+    return out
 
 
 # MARK: - Is a game still running?

@@ -514,8 +514,8 @@ def launch(g, cfg):
             problem = displays.tv_only(cfg["tv_monitor"], SAVED)
             if problem:
                 log("tv_only: " + problem)
-            else:
-                time.sleep(2)
+            elif not displays.wait_tv_only(cfg["tv_monitor"]):   # the game opens only once the TV is the screen
+                log("tv_only: the TV took long to become the only screen")
         except Exception as e:
             log("tv_only: %s" % e)
     before = cfg.get("before_launch")
@@ -529,6 +529,96 @@ def launch(g, cfg):
     os.startfile(g["launch"])
     if cfg.get("tv_monitor"):
         threading.Thread(target=watch_game, args=(cfg,), daemon=True).start()
+
+
+# MARK: - Controller shortcut: hold View + Menu to close the game and put the screens back
+
+PAD_BUTTONS = {"back": 0x0020, "view": 0x0020, "start": 0x0010, "menu": 0x0010, "lb": 0x0100, "rb": 0x0200,
+               "ls": 0x0040, "rs": 0x0080, "a": 0x1000, "b": 0x2000, "x": 0x4000, "y": 0x8000,
+               "up": 0x0001, "down": 0x0002, "left": 0x0004, "right": 0x0008}
+
+
+def game_pids(cfg):
+    import displays
+    dirs = game_dirs(cfg)
+    out = []
+    for pid, path in displays.processes():
+        n = os.path.normcase(path)
+        if any(n.startswith(d + "\\") for d in dirs) and not any(x in n for x in LAUNCHERS):
+            out.append(pid)
+    return out
+
+
+def close_game(cfg):
+    """Asks the game to close, forces it after a few seconds, then puts the screens back."""
+    pids = game_pids(cfg)
+    log("pad: closing %d game process(es)" % len(pids))
+    hide = 0x08000000
+    for pid in pids:
+        subprocess.run(["taskkill", "/PID", str(pid)], creationflags=hide, capture_output=True)
+    for _ in range(16):
+        time.sleep(0.5)
+        if not game_pids(cfg):
+            break
+    for pid in game_pids(cfg):
+        subprocess.run(["taskkill", "/F", "/PID", str(pid)], creationflags=hide, capture_output=True)
+    time.sleep(1)
+    restore_screens()
+
+
+def watch_pad(cfg):
+    """Xbox-style controllers (XInput): the combo held for `pad_hold` seconds closes the game. Buzzes to confirm."""
+    import ctypes
+
+    class PAD(ctypes.Structure):
+        _fields_ = [("buttons", ctypes.c_ushort), ("lt", ctypes.c_ubyte), ("rt", ctypes.c_ubyte),
+                    ("lx", ctypes.c_short), ("ly", ctypes.c_short), ("rx", ctypes.c_short), ("ry", ctypes.c_short)]
+
+    class STATE(ctypes.Structure):
+        _fields_ = [("packet", ctypes.c_ulong), ("pad", PAD)]
+
+    class BUZZ(ctypes.Structure):
+        _fields_ = [("left", ctypes.c_ushort), ("right", ctypes.c_ushort)]
+
+    xi = None
+    for dll in ("xinput1_4", "xinput1_3", "xinput9_1_0"):
+        try:
+            xi = getattr(ctypes.windll, dll)
+            break
+        except OSError:
+            pass
+    if xi is None:
+        log("pad: no XInput")
+        return
+    combo = 0
+    for name in cfg.get("pad_close", ["view", "menu"]):
+        combo |= PAD_BUTTONS.get(name.lower(), 0)
+    hold = float(cfg.get("pad_hold", 2))
+    since, fired, st = None, False, STATE()
+    while True:
+        time.sleep(0.15)
+        who = -1
+        for i in range(4):
+            if xi.XInputGetState(i, ctypes.byref(st)) == 0 and combo and st.pad.buttons & combo == combo:
+                who = i
+                break
+        if who < 0:
+            since, fired = None, False
+            continue
+        if since is None:
+            since = time.time()
+        if fired or time.time() - since < hold:
+            continue
+        fired = True
+        if not game_pids(cfg) and not os.path.exists(SAVED):
+            continue   # no game open: nothing to do
+        try:
+            xi.XInputSetState(who, ctypes.byref(BUZZ(40000, 40000)))
+            time.sleep(0.35)
+            xi.XInputSetState(who, ctypes.byref(BUZZ(0, 0)))
+        except Exception:
+            pass
+        threading.Thread(target=close_game, args=(cfg,), daemon=True).start()
 
 
 def handler(cfg):
@@ -680,6 +770,8 @@ def main():
         return
     threading.Thread(target=warm_covers, args=(cfg,), daemon=True).start()
     threading.Thread(target=answer_discovery, args=(cfg,), daemon=True).start()
+    if cfg.get("pad_close", ["view", "menu"]):
+        threading.Thread(target=watch_pad, args=(cfg,), daemon=True).start()
     if os.path.exists(SAVED) and not game_running(cfg):   # the PC was turned off mid-game: screens back first
         restore_screens()
     elif os.path.exists(SAVED):

@@ -23,6 +23,9 @@ Mostra na TV os jogos instalados no computador, com capa. OK num jogo abre o jog
 - Aba **Jogos** e um dock de jogos: na tela inicial, desça até Entradas e Atalhos e desça mais uma vez.
 - Ordem: o jogado por último fica à esquerda (abertos pela TV, pela Steam ou pelo Windows). Segure OK num jogo para
   movê-lo com ← →; OK ou Voltar solta. Depois que você move, a sua ordem vale; jogos novos entram na frente.
+- **Fechar o jogo pelo controle:** segure **View + Menu** (os dois botões pequenos do meio, num controle tipo Xbox) por
+  2 segundos. O controle vibra, o jogo recebe o pedido de fechar (e é forçado depois de 8 s) e as telas do PC voltam.
+  Troque a combinação em `pad_close` (ex.: `["lb", "rb", "view"]`) e o tempo em `pad_hold`; `"pad_close": []` desliga.
 - O fundo mostra a arte larga do jogo (da Steam, ou sua em `game-art-own/<nome>.jpg`); sem ela, a capa.
 
 ## Ajustes (`%USERPROFILE%\.cleanyourtv\games-agent.json`)
