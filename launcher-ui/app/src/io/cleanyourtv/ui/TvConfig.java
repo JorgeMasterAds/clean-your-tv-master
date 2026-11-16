@@ -103,6 +103,12 @@ final class TvConfig {
             if (o.has("stremio_auth")) {   // the Stremio account, for "Continue watching" on Home
                 c.getSharedPreferences("stremio", Context.MODE_PRIVATE).edit().putString("auth", o.optString("stremio_auth").trim()).apply();
             }
+            JSONObject pc = o.optJSONObject("games_pc");   // the PC's game list (pc-games/games_agent.py)
+            if (pc != null) {
+                String host = pc.optString("host").trim();
+                if (host.isEmpty() || host.matches("[0-9.]{7,15}:[0-9]{2,5}")) Prefs.setGames(host, pc.optString("token").trim(), pc.optString("input", "PC").trim());
+                else AppLog.w("config.json: games_pc skipped");
+            }
             JSONObject remote = o.optJSONObject("remote");
             if (remote != null) writeRemote(c, remote);
             JSONObject buttons = o.optJSONObject("buttons");

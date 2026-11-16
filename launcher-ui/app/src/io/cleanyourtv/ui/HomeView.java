@@ -105,9 +105,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final String[] TABS_FR = {"Explorer", "Films", "Séries"};
     private static final String[] TABS_TR = {"Keşfet", "Filmler", "Diziler"};
     private static final String[] TABS_HE = {"גילוי", "סרטים", "סדרות"};
-    private static final String[] TAB_KIND = {null, "cont", "movie", "tv", "cat"};
-    /** Tabs: Explore, Continue (Stremio), Movies, Shows and the category picked in the selector. */
-    private static final int NT = 5, CAT_TAB = 4;
+    private static final String[] TAB_KIND = {"cont", null, "movie", "tv", "cat"};
+    /** Tabs: Continue (Stremio), Explore, Movies, Shows and the category picked in the selector. */
+    private static final int NT = 5, CONT_TAB = 0, EXPLORE_TAB = 1, CAT_TAB = 4;
 
     /** "Bom dia, Master": by the TV's clock (madrugada 0-5, dia 5-12, tarde 12-18, noite 18-24) and the name in Settings. */
     static String greeting(String name) {
@@ -119,7 +119,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Continue and Categories can be turned off in Settings › Tabs and Stremio. */
     private static boolean tabOn(int i) {
-        return i == 1 ? Prefs.tabCont() : i == CAT_TAB ? Prefs.tabCat() : true;
+        return i == CONT_TAB ? Prefs.tabCont() : i == CAT_TAB ? Prefs.tabCat() : true;
     }
 
     /** In the tab bar: the categories have their own row under it, so their tab is never drawn there. */
@@ -129,6 +129,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private boolean chipsOn() {
         return picksOn() && Prefs.tabCat();
+    }
+
+    /** The category row shows under Explore, Movies and Shows; Continue has only what you were watching. */
+    private boolean chipsHere() {
+        return chipsOn() && tab != CONT_TAB;
     }
 
     /** Moves to the next (1) or previous (-1) category: past the end of a list, the row goes on to the next one. */
@@ -152,7 +157,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      * the lists (round at the ends); focused it turns white, showing its list it turns red.
      */
     private void drawChips(Canvas c) {
-        if (!chipsOn()) return;
+        if (!chipsHere()) return;
         if (chipText == null) {
             chipText = Ui.text(Ui.semibold, 27 * k, 0xF2FFFFFF);
             chipTextOn = Ui.text(Ui.semibold, 27 * k, 0xFF111111);
@@ -283,7 +288,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private Shader nightGradient;
 
     // At the top: tabs (0 to 2) and icon-only buttons (3 to 5); the three cards
-    private int tab, topIndex, cardIndex;
+    private int tab = EXPLORE_TAB, topIndex = EXPLORE_TAB, cardIndex;
     private int widgetIndex;    // with TalkBack on, the drawer's weather (0) or quotes (1) card can take the focus
     private List<Recs.Pick> cards = new ArrayList<>();
     // One flat run of pages, three cards each: every full page of Explore, then of Movies, then of Shows, and round
@@ -613,9 +618,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             pickIndex = 0;
             updatePicks();
         }
-        if (tab != 0) selectTab(0);
-        else if (page != 0) {
-            page = 0;
+        if (tab != EXPLORE_TAB) selectTab(EXPLORE_TAB);
+        else if (page != tabFirst[EXPLORE_TAB]) {
+            page = tabFirst[EXPLORE_TAB];
             updateCards();
         }
         retarget(!animated);
@@ -632,7 +637,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private String[] tabs() {
         String[] b = Ui.he ? TABS_HE : Ui.ru ? TABS_RU : Ui.es ? TABS_ES : Ui.de ? TABS_DE : Ui.fr ? TABS_FR : Ui.tur ? TABS_TR : Ui.en ? TABS_EN : TABS;
-        return new String[] {b[0], Ui.tr("Continuar", "Continue"), b[1], b[2], Recs.categoryLabel()};
+        return new String[] {Ui.tr("Continuar", "Continue"), b[0], b[1], b[2], Recs.categoryLabel()};
     }
 
     @Override public void onData() {
@@ -961,7 +966,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             h.label = Ui.date(System.currentTimeMillis()).toUpperCase(Ui.locale());
             return h;
         }
-        h.label = tab == CAT_TAB ? Recs.categoryLabel().toUpperCase(Ui.locale()) : tab == 1 ? Ui.tr("CONTINUAR ASSISTINDO", "CONTINUE WATCHING") : Recs.periodLabel();
+        h.label = tab == CAT_TAB ? Recs.categoryLabel().toUpperCase(Ui.locale()) : tab == CONT_TAB ? Ui.tr("CONTINUAR ASSISTINDO", "CONTINUE WATCHING") : Recs.periodLabel();
         h.title = p.title == null ? "" : p.title;
         h.meta = p.meta == null ? "" : p.meta;
         h.button = p.pkg != null;
@@ -2995,8 +3000,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         String shown = keep && !cards.isEmpty() ? Recs.key(cards.get(Math.min(cardIndex, cards.size() - 1))) : null;
         // Where we are in the tab: a new list (every hour, or details that drop a pick) keeps the tab and the page.
         if (!tabOn(tab)) {   // the tab was turned off in Settings
-            tab = 0;
-            page = 0;
+            tab = EXPLORE_TAB;
+            page = tabFirst[EXPLORE_TAB];
         }
         int inTab = Math.max(0, page - tabFirst[tab]);
         for (int t = 0; t < NT; t++) {
@@ -3465,7 +3470,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     chipIndex = Recs.categoryIndex();
                 } else if (dy < 0) {
                     zone = Z_TOP;
-                    topIndex = tab == CAT_TAB ? 0 : tab;     // as on Apple TV: moving up to the tabs focuses the selected tab
+                    topIndex = tab == CAT_TAB ? EXPLORE_TAB : tab;     // as on Apple TV: moving up to the tabs focuses the selected tab
                     updateCards();      // ready the other tabs' first pages
                 } else {
                     zone = Z_SHELF;
@@ -3478,7 +3483,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     showCategory(Math.floorMod(Recs.categoryIndex() + (Ui.he ? -dx : dx), Recs.CATEGORIES.length));
                 } else if (dy < 0) {
                     zone = Z_TOP;
-                    topIndex = 0;
+                    topIndex = EXPLORE_TAB;
                 } else if (cards.isEmpty()) {
                     return true;    // the list is still loading: the focus waits on the pill
                 } else {
@@ -3497,7 +3502,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     if (next == topIndex) return true;
                     topIndex = next;
                     if (topIndex < NT) selectTab(topIndex);   // like Apple TV tabs: focusing a tab selects it
-                } else if (dy > 0 && topIndex < NT && chipsOn()) {
+                } else if (dy > 0 && topIndex < NT && topIndex != CONT_TAB && chipsOn()) {
                     zone = Z_CHIPS;
                     chipIndex = Recs.categoryIndex();
                     if (tab != CAT_TAB) showCategory(chipIndex);   // like a tab: focusing the row shows its list

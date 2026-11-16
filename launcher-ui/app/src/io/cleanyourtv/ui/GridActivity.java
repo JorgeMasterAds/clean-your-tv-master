@@ -84,7 +84,9 @@ public class GridActivity extends Activity {
             open = (TvUi.OnTitle) list[1];
             grid = new TvUi.Grid(this, k, COLUMNS, open);
             grid.add(titles);
-            status.setText(titles.size() == 1 ? Ui.tr("1 título", "1 title") : titles.size() + Ui.tr(" títulos", " titles"));
+            boolean games = !titles.isEmpty() && "game".equals(titles.get(0).kind);
+            status.setText(games ? titles.size() + Ui.tr(" jogos · OK abre o jogo no PC e troca a TV para o PC", " games · OK opens it on the PC and switches the TV to it")
+                    : titles.size() == 1 ? Ui.tr("1 título", "1 title") : titles.size() + Ui.tr(" títulos", " titles"));
         } else {
             grid = new TvUi.Grid(this, k, COLUMNS, open);
             status.setText(Ui.tr("Carregando…", "Loading…"));

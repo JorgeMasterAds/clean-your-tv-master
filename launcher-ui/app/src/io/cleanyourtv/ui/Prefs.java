@@ -153,6 +153,16 @@ final class Prefs {
     static void setTmdbKey(String key) { put("tmdbKey", key.trim()); }
 
     /** Two letters (US, BR, GB...), or "" for the TV's own country. */
+    // MARK: - PC games (pc-games/games_agent.py on the computer; set by config.json "games_pc")
+
+    static String gamesHost() { return sp().getString("gamesHost", "").trim(); }
+    static String gamesToken() { return sp().getString("gamesToken", "").trim(); }
+    static String gamesInput() { return sp().getString("gamesInput", "PC"); }
+    static void setGames(String host, String token, String input) {
+        sp().edit().putString("gamesHost", host).putString("gamesToken", token).putString("gamesInput", input.isEmpty() ? "PC" : input).apply();
+        version++;
+    }
+
     static String tmdbRegion() {
         String v = app == null ? Config.TMDB_REGION : sp().getString("tmdbRegion", Config.TMDB_REGION);
         return v.trim().toUpperCase(Locale.ROOT);

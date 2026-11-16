@@ -58,7 +58,7 @@ final class HomeApps {
     /** The "HDMI Inputs" button: opens the bottom drawer on the inputs (the home screen handles it). */
     static final int INPUTS = 7, EXPLORE = 8;
     /** The TV's own network screen (Wi-Fi and Ethernet), from the bottom drawer. */
-    static final int NETWORK = 9;
+    static final int NETWORK = 9, GAMES = 10;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     static final int TILE_W = 384, TILE_H = 216;
 
@@ -225,6 +225,7 @@ final class HomeApps {
     /** Shortcuts in the bottom drawer. */
     static List<Item> drawerShortcuts() {
         List<Item> items = new ArrayList<>();
+        if (Games.configured()) items.add(shortcut(GAMES, "games", Ui.tr("Jogos do PC", "PC Games"), "gamepad"));
         items.add(shortcut(ALL_APPS, "all", Ui.tr("Todos os Apps", "All Apps"), "apps"));
         items.add(shortcut(NETWORK, "network", Ui.tr("Wi-Fi e Rede", "Wi-Fi & Network"), "wifi"));
         items.add(shortcut(SETTINGS, "settings", Ui.tr("Configurações", "Settings"), "settings"));
@@ -427,6 +428,9 @@ final class HomeApps {
             case EXPLORE:
                 intent = new Intent().setComponent(new ComponentName(a, ExploreActivity.class));
                 break;
+            case GAMES:
+                Games.open(a);
+                return true;
             default:
                 return false;
         }
