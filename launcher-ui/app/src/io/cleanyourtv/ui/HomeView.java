@@ -1032,6 +1032,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** Swaps the background with a cross-fade (from one image to another, from the gradient to an image, or back). */
     private void showBackdrop(Backdrop b) {
         if (b == bgTo) return;
+        // On the games dock the background belongs to the focused game: the hero's title changing behind it (new
+        // picks, the timer) must not swap it for a movie.
+        if (zone == Z_GAMES && (b == null || !gameArt.containsValue(b))) return;
         long up = SystemClock.uptimeMillis();
         // In the middle of another swap, start from whichever is more visible.
         if (bgFadeAt == 0 || fadeEase(bgFadeAt, up) >= 0.5f) bgFrom = bgTo;
