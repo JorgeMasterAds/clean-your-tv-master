@@ -25,6 +25,7 @@ public class HomeActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         TvConfig.apply(this);
+        KeysHeal.check(this);   // the remote's buttons, back on after an update of this app
         if (prefsVersion != Prefs.version) {
             prefsVersion = Prefs.version;
             HomeData.get(this).settingsChanged();
