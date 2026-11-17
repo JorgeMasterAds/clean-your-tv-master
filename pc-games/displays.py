@@ -220,8 +220,10 @@ def tv_only(tv_monitor, saved_path):
 
     save_windows(saved_path + ".windows")
     if not os.path.exists(saved_path):   # the real layout, saved before anything moves (switching the TV on can move it)
-        with open(saved_path, "w", encoding="utf-8") as f:
+        tmp = saved_path + ".tmp"   # written whole or not at all: a half file left the screens off for good
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(snapshot(), f, indent=2)
+        os.replace(tmp, saved_path)
     tv = find_tv(tv_monitor)
     if not tv or not tv["attached"]:
         # The TV may be off as a screen (only the monitor on, or "Disconnect this display"): its path is turned on.
@@ -281,8 +283,15 @@ def restore(saved_path):
     try:
         with open(saved_path, encoding="utf-8") as f:
             layout = json.load(f)
-    except (OSError, ValueError):
+    except OSError:
         return False
+    except ValueError:   # damaged: every screen on, extended, and the file goes so it isn't tried again
+        extend()
+        try:
+            os.remove(saved_path)
+        except OSError:
+            pass
+        return True
     want = {hw(d["monitor"]): d for d in layout if d.get("monitor")}
     physical_saved = [d for d in layout if d.get("monitor")]
     extend()

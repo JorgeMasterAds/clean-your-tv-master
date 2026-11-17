@@ -59,16 +59,38 @@ def log(msg):
         pass
 
 
+def save_bytes(path, data):
+    """Writes through a .tmp and swaps it in: a cut-off write (power, full disk) never leaves half a file behind."""
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+
+def save_json_file(path, d, **kw):
+    save_bytes(path, json.dumps(d, ensure_ascii=False, **kw).encode("utf-8"))
+
+
 def load_config():
     os.makedirs(HOME, exist_ok=True)
     own = {}
     if os.path.exists(CONFIG):
-        with open(CONFIG, encoding="utf-8") as f:
-            own = json.load(f)
+        try:
+            with open(CONFIG, encoding="utf-8") as f:
+                own = json.load(f)
+        except (OSError, ValueError) as e:
+            # A typo in the file (an extra comma) used to stop the program with no trace. The file is kept for you to
+            # fix and the program starts with a new one, so it never dies silently.
+            bad = CONFIG + ".com-erro"
+            try:
+                os.replace(CONFIG, bad)
+            except OSError:
+                pass
+            log("config: %s (o arquivo foi guardado como %s)" % (e, os.path.basename(bad)))
+            own = {}
     if not own.get("token"):   # only your own keys are saved: the defaults stay here and can improve
         own["token"] = secrets.token_urlsafe(24)
-        with open(CONFIG, "w", encoding="utf-8") as f:
-            json.dump(own, f, indent=2, ensure_ascii=False)
+        save_json_file(CONFIG, own, indent=2)
     cfg = dict(DEFAULTS)
     cfg.update(own)
     cfg["exclude"] = DEFAULTS["exclude"] + own.get("exclude", [])
@@ -84,7 +106,22 @@ def game_dirs(cfg):
         if os.path.isdir(p):
             dirs.append(p)
     dirs += [p for p in cfg.get("game_dirs", []) if os.path.isdir(p)]
-    return [os.path.normcase(os.path.normpath(p)) for p in dirs]
+    # Steam libraries and Epic installs on any drive: without them a game there was never seen running, and after
+    # 2 minutes the screens came back with the game still open on the TV.
+    for lib in steam_libraries():
+        p = os.path.join(lib, "steamapps", "common")
+        if os.path.isdir(p):
+            dirs.append(p)
+    for m in epic_manifests():
+        p = m.get("InstallLocation", "")
+        if p and os.path.isdir(p):
+            dirs.append(p)
+    out = []
+    for p in dirs:
+        n = os.path.normcase(os.path.normpath(p))
+        if n not in out:
+            out.append(n)
+    return out
 
 
 def read_shortcuts():
@@ -127,34 +164,45 @@ def norm(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
-def steam_games():
-    out = []
+def steam_libraries():
     try:
         import winreg
         k = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam")
         steam = winreg.QueryValueEx(k, "SteamPath")[0]
     except Exception:
-        return out
+        return []
     libs = {os.path.normpath(steam)}
     for vdf in (os.path.join(steam, "config", "libraryfolders.vdf"), os.path.join(steam, "steamapps", "libraryfolders.vdf")):
-        if os.path.exists(vdf):
+        try:
             with open(vdf, encoding="utf-8", errors="replace") as f:
                 for m in re.finditer(r'"path"\s+"([^"]+)"', f.read()):
                     libs.add(os.path.normpath(m.group(1).replace("\\\\", "\\")))
+        except OSError:
+            pass
     for d in "CDEFGHIJ":   # libraries Steam forgot about
         for p in (d + ":\\SteamLibrary", d + ":\\Games\\SteamLibrary"):
             if os.path.isdir(p):
                 libs.add(os.path.normpath(p))
+    return sorted(libs)
+
+
+def steam_games():
+    out = []
     seen = set()
-    for lib in libs:
+    for lib in steam_libraries():
         apps = os.path.join(lib, "steamapps")
-        if not os.path.isdir(apps):
+        try:
+            names = os.listdir(apps)
+        except OSError:   # a library on a drive that is unplugged
             continue
-        for fn in os.listdir(apps):
+        for fn in names:
             if not (fn.startswith("appmanifest_") and fn.endswith(".acf")):
                 continue
-            with open(os.path.join(apps, fn), encoding="utf-8", errors="replace") as f:
-                t = f.read()
+            try:
+                with open(os.path.join(apps, fn), encoding="utf-8", errors="replace") as f:
+                    t = f.read()
+            except OSError:
+                continue
             appid = re.search(r'"appid"\s+"(\d+)"', t)
             name = re.search(r'"name"\s+"([^"]+)"', t)
             if not appid or not name or appid.group(1) in STEAM_SKIP or appid.group(1) in seen:
@@ -165,19 +213,27 @@ def steam_games():
     return out
 
 
-def epic_games():
-    out = []
+def epic_manifests():
     d = r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests"
-    if not os.path.isdir(d):
+    out = []
+    try:
+        names = os.listdir(d)
+    except OSError:
         return out
-    for fn in os.listdir(d):
+    for fn in names:
         if not fn.endswith(".item"):
             continue
         try:
             with open(os.path.join(d, fn), encoding="utf-8") as f:
-                m = json.load(f)
+                out.append(json.load(f))
         except (OSError, ValueError):
             continue
+    return out
+
+
+def epic_games():
+    out = []
+    for m in epic_manifests():
         if not m.get("AppName") or "UE_" in m.get("AppName", ""):
             continue
         out.append({"name": m.get("DisplayName", m["AppName"]), "source": "Epic",
@@ -295,7 +351,7 @@ def make_cover(g, cfg):
     own = cfg.get("covers", {}).get(g["name"])
     try:
         if own:
-            data = fetch(own) if own.startswith("http") else open(own, "rb").read()
+            data = fetch(own) if own.startswith("http") else read_file(own)
         else:
             appid = g.get("steam") or steam_id_for(cfg.get("search", {}).get(g["name"], g["name"]))
             if not appid:
@@ -311,8 +367,7 @@ def make_cover(g, cfg):
                     data = None
             if not data:
                 return None
-        with open(path, "wb") as f:
-            f.write(data)
+        save_bytes(path, data)
         return path
     except Exception as e:
         log("cover %s: %s" % (g["name"], e))
@@ -345,8 +400,7 @@ def make_art(g, cfg):
             data = fetch(url)
             if data and len(data) > 5000:
                 path = os.path.join(ART, norm(g["name"]) + ".jpg")
-                with open(path, "wb") as f:
-                    f.write(data)
+                save_bytes(path, data)
                 return path
         except Exception:
             pass
@@ -386,13 +440,17 @@ def make_art_b(g, cfg):
         try:
             data = fetch(url)
             if data and len(data) > 5000:
-                with open(path, "wb") as f:
-                    f.write(data)
+                save_bytes(path, data)
                 return path
         except Exception:
             pass
     open(miss, "w").close()   # no image B: the TV keeps image A; asked again in a week
     return None
+
+
+def read_file(path):
+    with open(path, "rb") as f:
+        return f.read()
 
 
 def played_on_tv():
@@ -407,8 +465,7 @@ def mark_played(g):
     d = played_on_tv()
     d[g["id"]] = int(time.time())
     try:
-        with open(PLAYED, "w", encoding="utf-8") as f:
-            json.dump(d, f)
+        save_json_file(PLAYED, d)
     except OSError as e:
         log("played: %s" % e)
 
@@ -417,14 +474,19 @@ def read_json(path):
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except (OSError, ValueError):
+    except OSError:
+        return {}
+    except ValueError:   # damaged: kept aside so the next save doesn't wipe the history for good
+        try:
+            os.replace(path, path + ".com-erro")
+        except OSError:
+            pass
         return {}
 
 
 def write_json(path, d):
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(d, f)
+        save_json_file(path, d)
     except OSError as e:
         log("%s: %s" % (os.path.basename(path), e))
 
@@ -569,12 +631,37 @@ STATE = {"games": [], "at": 0}
 LOCK = threading.Lock()
 
 
+SCAN_LOCK = threading.Lock()
+
+
 def games(cfg, fresh=False):
     with LOCK:
-        if fresh or not STATE["games"] or time.time() - STATE["at"] > 300:
-            STATE["games"] = scan(cfg)
-            STATE["at"] = time.time()
-        return STATE["games"]
+        have, stale = STATE["games"], fresh or time.time() - STATE["at"] > 300
+    if have and not stale:
+        return have
+    if have and not fresh:
+        # Stale but usable: answered now, refreshed in the background (the scan can take up to a minute, and the TV's
+        # status checks used to wait for it).
+        if SCAN_LOCK.acquire(blocking=False):
+            def bg():
+                try:
+                    found = scan(cfg)
+                    with LOCK:
+                        STATE["games"], STATE["at"] = found, time.time()
+                except Exception as e:
+                    log("scan: %s" % e)
+                finally:
+                    SCAN_LOCK.release()
+            threading.Thread(target=bg, daemon=True).start()
+        return have
+    with SCAN_LOCK:   # first time, or asked fresh: one scan, a second caller reuses it
+        with LOCK:
+            if STATE["games"] and not fresh and time.time() - STATE["at"] <= 300:
+                return STATE["games"]
+        found = scan(cfg)
+        with LOCK:
+            STATE["games"], STATE["at"] = found, time.time()
+        return found
 
 
 def warm_covers(cfg):
@@ -606,13 +693,19 @@ def game_running(cfg):
     return False
 
 
+RESTORE_LOCK = threading.Lock()
+
+
 def restore_screens():
-    try:
-        import displays
-        if displays.restore(SAVED):
-            log("screens restored")
-    except Exception as e:
-        log("restore: %s" % e)
+    # Closing a game makes two watchers restore at nearly the same moment; interleaved, they could leave the screens
+    # in a wrong layout. One at a time: the second finds nothing saved and does nothing.
+    with RESTORE_LOCK:
+        try:
+            import displays
+            if displays.restore(SAVED):
+                log("screens restored")
+        except Exception as e:
+            log("restore: %s" % e)
 
 
 def watch_game(cfg):
