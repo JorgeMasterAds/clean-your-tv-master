@@ -2343,7 +2343,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private long lastKeyAt = SystemClock.uptimeMillis();
 
-    /** Every 8 s without a key press, the hero moves on to the next title (round the tab at the end). */
+    /** Every 15 s (Settings) without a key press, the hero moves on to the next title (round the tab at the end). */
     private final Runnable autoNext = new Runnable() {
         @Override public void run() {
             postDelayed(this, 2000);
@@ -2371,6 +2371,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         super.onAttachedToWindow();
         removeCallbacks(autoNext);
         postDelayed(autoNext, 2000);
+    }
+
+    // Back on Home (from an app, a details page, the screen saver): the hero waits its full time again, so the title
+    // on screen does not change the moment Home shows up.
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) lastKeyAt = SystemClock.uptimeMillis();
     }
 
     boolean onKey(KeyEvent e) {

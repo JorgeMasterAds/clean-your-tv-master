@@ -276,7 +276,7 @@ final class Prefs {
     static String openIn() { return sp().getString("openIn", "app"); }
     static void setOpenIn(String v) { put("openIn", v); }
     /** Seconds between hero titles; 0 = it stays put. */
-    static int heroEvery() { return sp().getInt("heroEvery", 8); }
+    static int heroEvery() { return sp().getInt("heroEvery", 15); }
     static void setHeroEvery(int s) { sp().edit().putInt("heroEvery", s).apply(); version++; }
     static int perTab() { return sp().getInt("perTab", 10); }
     static void setPerTab(int n) { sp().edit().putInt("perTab", n).apply(); version++; }
