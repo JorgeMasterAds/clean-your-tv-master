@@ -316,10 +316,12 @@ final class Games {
     private static void watchStart(Activity a) {
         long start = System.currentTimeMillis(), until = start + 12 * 3600_000L;   // a long evening of play at most
         boolean playing = false;
-        while (System.currentTimeMillis() < until) {
+        int failures = 0;   // the PC asleep or off: stop asking after ~5 minutes of silence
+        while (System.currentTimeMillis() < until && failures < 100) {
             try {
                 Thread.sleep(playing ? 2500 : 3000);   // a closed game brings the TV Home within seconds
                 JSONObject o = new JSONObject(request("GET", "/api/status?t=" + token()));
+                failures = 0;
                 String state = o.optString("state");
                 if ("idle".equals(state)) return;
                 if ("playing".equals(state)) {
@@ -347,7 +349,8 @@ final class Games {
                     return;
                 }
             } catch (Exception e) {
-                AppLog.w("games status: " + e.getMessage());
+                failures++;
+                if (failures == 1) AppLog.w("games status: " + e.getMessage());
             }
         }
     }
@@ -390,13 +393,18 @@ final class Games {
             c.setDoOutput(true);
             c.setFixedLengthStreamingMode(0);
         }
-        int code = c.getResponseCode();
-        InputStream in = code < 400 ? c.getInputStream() : c.getErrorStream();
+        int code;
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buf = new byte[8192];
-        int n;
-        while (in != null && (n = in.read(buf)) > 0) out.write(buf, 0, n);
-        c.disconnect();
+        try {
+            code = c.getResponseCode();
+            try (InputStream in = code < 400 ? c.getInputStream() : c.getErrorStream()) {
+                byte[] buf = new byte[8192];
+                int n;
+                while (in != null && (n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+        } finally {
+            c.disconnect();
+        }
         String body = out.toString("UTF-8");
         if (code >= 400) throw new IOException(code == 403 ? Ui.tr("código de acesso errado", "wrong access code") : "HTTP " + code);
         return body;

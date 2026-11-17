@@ -202,7 +202,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private boolean gamesLoading, gameMoving;
     private final Map<String, Backdrop> gameArt = new java.util.LinkedHashMap<>();
     private final java.util.Set<String> gameArtLoading = new java.util.HashSet<>();
-    private final java.util.Set<String> gameNoB = new java.util.HashSet<>();   // games the PC has no image B for
+    private final Map<String, Long> gameNoB = new HashMap<>();   // game -> when the PC had no image B (asked again in 10 min)
+    private final ExecutorService gameArtWorker = Executors.newSingleThreadExecutor();   // one download at a time
     // The category row under the tabs (Trailers, Top 10, Marvel...): focusing a pill shows that list.
     private static final float CHIP_TOP = 248, CHIP_H = 54, CHIP_GAP = 14;
     private int chipIndex;
@@ -1832,7 +1833,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (zone != Z_GAMES || gameIndex >= gameItems.size()) return;
         Games.Game g = gameItems.get(gameIndex);
         // Image A or B, taking turns every 10 minutes like the titles' (B: another picture the PC finds for the game).
-        boolean alt = Recs.altTurn() && !gameNoB.contains(g.id);
+        Long noB = gameNoB.get(g.id);
+        boolean alt = Recs.altTurn() && (noB == null || SystemClock.uptimeMillis() - noB > 600_000L);
         String key = alt ? g.id + "#b" : g.id;
         Backdrop have = gameArt.get(key);
         if (have != null) {
@@ -1841,9 +1843,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (!gameArtLoading.add(key)) return;
         boolean haveA = gameArt.containsKey(g.id);
-        new Thread(() -> {
+        gameArtWorker.execute(() -> {
+          try {
             Bitmap b = g.art == null || !alt ? null : Images.fetch(g.art + "&b=1");
-            if (b == null && alt) post(() -> gameNoB.add(g.id));   // asked once per run of the app
+            if (b == null && alt) post(() -> gameNoB.put(g.id, SystemClock.uptimeMillis()));
             if (b == null && alt && haveA) {   // no image B for this game: A again
                 post(() -> {
                     gameArtLoading.remove(key);
@@ -1852,18 +1855,24 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 });
                 return;
             }
+            boolean fallback = b == null && alt;   // B missing: image A, kept under A's own key
             if (b == null && g.art != null) b = Images.fetch(g.art);
             if (b == null && g.cover != null) b = g.cover.copy(Bitmap.Config.ARGB_8888, false);   // make() recycles what it gets
             Backdrop made = b == null ? null : Backdrop.make(b, true);
+            String store = fallback ? g.id : key;
             post(() -> {
                 gameArtLoading.remove(key);
                 if (made == null) return;
-                gameArt.put(key, made);
+                gameArt.put(store, made);
                 while (gameArt.size() > 6) gameArt.remove(gameArt.keySet().iterator().next());
                 if (zone == Z_GAMES && gameIndex < gameItems.size() && gameItems.get(gameIndex) == g) showBackdrop(made);
                 wake();
             });
-        }).start();
+          } catch (Throwable e) {   // an OutOfMemoryError on a 1 GB TV: no art this time, the app stays up
+            AppLog.w("game art: " + e);
+            post(() -> gameArtLoading.remove(key));
+          }
+        });
     }
 
     private int nearestGame(float x) {
@@ -2362,6 +2371,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Runnable autoNext = new Runnable() {
         @Override public void run() {
             postDelayed(this, 2000);
+            if (!running) return;   // another app is in front: no photos or TMDB calls in the background
             if (!picksOn() || cards.isEmpty() || sheetOpen || zone == Z_DRAWER || zone == Z_GAMES || zone == Z_TOP) return;
             int every = Prefs.heroEvery();   // Settings › Tabs and Stremio (0 = the hero stays put)
             if (every <= 0 || (zone == Z_CARDS && trailerFocus) || SystemClock.uptimeMillis() - lastKeyAt < every * 1000L) return;
@@ -3310,7 +3320,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         // Recs keeps the 10 images used last: this page and the two it can turn to (9), or with the focus on the tabs,
         // this page and the other tabs' first pages, so the next move never waits for a photo.
-        for (Recs.Pick p : cards) recs.backdrop(p);
+        // Never more than Recs keeps in memory (4 on the dark design): asking for more made each new photo push out one
+        // still wanted, which was then built again, round and round (a 4K photo every half second, 60% of frames late).
+        int room = recs.imageRoom();
+        java.util.Set<String> asked = new java.util.HashSet<>();
+        if (!cards.isEmpty()) {
+            Recs.Pick focused = cards.get(Math.min(cardIndex, cards.size() - 1));
+            recs.backdrop(focused);
+            asked.add(Recs.shown(focused));
+        }
+        for (Recs.Pick p : cards) if (p.backdrop != null && asked.size() < room && asked.add(Recs.shown(p))) recs.backdrop(p);
         if (pages > 0 && total > 1) {
             List<Recs.Pick> near = new ArrayList<>();
             if (zone == Z_TOP) {
@@ -3319,7 +3338,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 near.addAll(pageCards(Math.floorMod(page + 1, total)));
                 near.addAll(pageCards(Math.floorMod(page - 1, total)));
             }
-            for (Recs.Pick p : near) recs.backdrop(p);
+            for (Recs.Pick p : near) if (p.backdrop != null && asked.size() < room && asked.add(Recs.shown(p))) recs.backdrop(p);
             near.addAll(cards);
             recs.details(near);
         }

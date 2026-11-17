@@ -116,6 +116,7 @@ final class Recs {
     private final List<Listener> listeners = new ArrayList<>();
     // This hour's, built and ready to draw, in the order they were last drawn: the one unused longest goes first.
     private final Map<String, Backdrop> images = new LinkedHashMap<>(16, 0.75f, true);
+    private final Map<String, Long> imageFailedAt = new HashMap<>();   // a photo that failed waits 10 min (guarded by images)
     private final java.util.Set<String> pending = new java.util.HashSet<>();
     private final java.util.Set<String> asked = new java.util.HashSet<>();   // details(): once per pick and list
     private volatile List<Pick> picks = new ArrayList<>();
@@ -426,6 +427,8 @@ final class Recs {
         synchronized (images) {
             Backdrop b = images.get(key);
             if (b != null) return b;
+            Long failed = imageFailedAt.get(key);
+            if (failed != null && System.currentTimeMillis() - failed < 600_000L) return null;
             if (!pending.add(key)) return null;
         }
         io.execute(() -> {
@@ -1082,14 +1085,24 @@ final class Recs {
             if (forLight != light) return;   // the design changed midway: this one is stale
             synchronized (images) {
                 images.put(key, backdrop);
-                while (images.size() > (forLight ? 10 : 4)) images.remove(images.keySet().iterator().next());
+                while (images.size() > imageRoom(forLight)) images.remove(images.keySet().iterator().next());
             }
             notifyListeners();
         } catch (IOException | RuntimeException | OutOfMemoryError e) {
             //noinspection ResultOfMethodCallIgnored
             f.delete();
+            synchronized (images) { imageFailedAt.put(key, System.currentTimeMillis()); }
             AppLog.w("recommendation image: " + e.getMessage());
         }
+    }
+
+    /** How many finished photos stay in memory: 10 on the light design, 4 on the dark one (bigger layers). */
+    int imageRoom() {
+        return imageRoom(light);
+    }
+
+    private static int imageRoom(boolean forLight) {
+        return forLight ? 10 : 4;
     }
 
     void trim() {
