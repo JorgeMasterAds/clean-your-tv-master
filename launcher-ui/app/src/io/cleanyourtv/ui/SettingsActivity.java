@@ -154,7 +154,7 @@ public class SettingsActivity extends Activity {
                 hasKey = Recs.hasKey(getContext());
                 recs = Recs.status(getContext());
                 invalidate();
-                handler.postDelayed(this, 2000);
+                handler.postDelayed(this, 5000);   // the TMDB status changes slowly: no disk read every 2 s
             }
         };
 
@@ -689,7 +689,7 @@ public class SettingsActivity extends Activity {
                     .show();
             new Thread(() -> {
                 try {
-                    org.json.JSONObject r = new org.json.JSONObject(Tmdb.readAll(new java.net.URL("https://link.stremio.com/api/create?type=Create").openStream()))
+                    org.json.JSONObject r = new org.json.JSONObject(Tmdb.readAll(stremioLink("https://link.stremio.com/api/create?type=Create")))
                             .getJSONObject("result");
                     String code = r.getString("code");
                     post(() -> dialog.setMessage(Ui.tr("No celular, entre no Stremio e abra:\n\nlink.stremio.com/" + code + "\n\nEsta tela fecha sozinha quando ligar.",
@@ -697,7 +697,7 @@ public class SettingsActivity extends Activity {
                     for (int i = 0; i < 200 && dialog.isShowing(); i++) {   // up to 10 minutes
                         Thread.sleep(3000);
                         org.json.JSONObject res = new org.json.JSONObject(Tmdb.readAll(
-                                new java.net.URL("https://link.stremio.com/api/read?type=Read&code=" + code).openStream())).optJSONObject("result");
+                                stremioLink("https://link.stremio.com/api/read?type=Read&code=" + code))).optJSONObject("result");
                         String key = res == null ? "" : res.optString("authKey", "");
                         if (!key.isEmpty()) {
                             sp.edit().putString("auth", key).apply();
@@ -1401,5 +1401,13 @@ public class SettingsActivity extends Activity {
             invalidate();
             spoken.focusMoved();
         }
+    }
+
+    /** The Stremio login link's API with time limits: a stuck network no longer holds the login screen forever. */
+    static java.io.InputStream stremioLink(String url) throws java.io.IOException {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        c.setConnectTimeout(6000);
+        c.setReadTimeout(8000);
+        return c.getInputStream();
     }
 }

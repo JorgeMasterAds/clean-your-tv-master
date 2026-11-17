@@ -554,6 +554,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // frame cost more than drawing straight to the screen (measured: focus on the picks 33 → 12 ms a frame, the
         // drawer 19 → 17 ms).
         for (View v : new View[] {heroLayer, status, platter, tiles, drawerLayer, sheetLayer}) v.setLayerType(Ui.LEGACY ? LAYER_TYPE_NONE : LAYER_TYPE_HARDWARE, null);
+        // The background too: the photo and its three full-screen shades were drawn again on every frame of every
+        // animation (eight full-screen passes during a fade), ~70 ms of GPU a frame on a TCL C6K. Cached, it is one
+        // texture, redrawn only when the photo changes or fades.
+        if (!Ui.LEGACY) sky.setLayerType(LAYER_TYPE_HARDWARE, null);
         for (View v : new View[] {sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer}) {
             v.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);   // TalkBack reads the items (Spoken)
             addView(v);
@@ -2402,7 +2406,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // on screen does not change the moment Home shows up.
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) lastKeyAt = SystemClock.uptimeMillis();
+        if (hasFocus) {
+            lastKeyAt = SystemClock.uptimeMillis();
+            TrailerReturn.cancel();   // back Home already: a trailer's return has nothing left to do
+        }
     }
 
     boolean onKey(KeyEvent e) {
@@ -3419,29 +3426,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         imagePaint.setColorFilter(null);
     }
 
-    private LinearGradient heroLeft, heroBottom, heroTop;
-
     private void drawLightImage(Canvas c, Backdrop b, float alpha) {
-        if (b.image != null && picksOn()) {   // full-screen hero: the sharp photo with scrims for the text and the dock
+        if (b.image != null && picksOn()) {   // full-screen hero: the sharp photo, its scrims baked in (Backdrop.shade)
             drawImage(c, b.image, alpha);
-            if (heroLeft == null) {
-                heroLeft = new LinearGradient(0, 0, w * 0.72f, 0, new int[] {0xD9000000, 0x99000000, 0x33000000, 0x00000000},
-                        new float[] {0, 0.35f, 0.7f, 1}, Shader.TileMode.CLAMP);
-                heroBottom = new LinearGradient(0, h, 0, h * 0.42f, new int[] {0xF2000000, 0xB3000000, 0x40000000, 0x00000000},
-                        new float[] {0, 0.3f, 0.7f, 1}, Shader.TileMode.CLAMP);
-                heroTop = new LinearGradient(0, 0, 0, h * 0.28f, 0x99000000, 0x00000000, Shader.TileMode.CLAMP);
-            }
-            int a = Math.round(255 * Math.min(1, alpha));
-            fill.setColor(0xFF000000);
-            fill.setAlpha(a);
-            fill.setShader(heroLeft);
-            c.drawRect(screen, fill);
-            fill.setShader(heroBottom);
-            c.drawRect(screen, fill);
-            fill.setShader(heroTop);
-            c.drawRect(screen, fill);
-            fill.setShader(null);
-            fill.setAlpha(255);
             return;
         }
         if (night < 0.999f || b.nightImage == null) drawImage(c, b.lightImage, alpha);

@@ -24,12 +24,17 @@ final class DeepLinks {
 
     private static final String UA = "CleanYourTV-UI/1.0 (https://github.com/matheus-caldeira/cleanyourtv-ui)";
     private static final Map<String, Map<String, String>> CACHE = new HashMap<>();
+    private static final Map<String, Long> FAILED = new HashMap<>();   // Wikidata unreachable for a title: 10 min without asking
 
     /** App package → link to the title in it ("tv" or "movie", TMDB id); empty when Wikidata has none. */
     static Map<String, String> find(Context c, String kind, int id, String name) {
         String key = kind + ":" + id;
         synchronized (CACHE) {
             if (CACHE.containsKey(key)) return CACHE.get(key);
+            // A slow or unreachable Wikidata made every OK wait up to ~28 s before the app opened: once it failed,
+            // the app opens straight away (on its home) for the next 10 minutes.
+            Long failed = FAILED.get(key);
+            if (failed != null && System.currentTimeMillis() - failed < 600_000L) return new HashMap<>();
         }
         android.content.SharedPreferences sp = c.getSharedPreferences("deeplinks", Context.MODE_PRIVATE);
         String kept = sp.getString(key, null);
@@ -79,7 +84,8 @@ final class DeepLinks {
             }
         } catch (Exception e) {
             AppLog.w("deep link " + key + ": " + e.getMessage());
-            return out;    // not cached: the next try may reach Wikidata
+            synchronized (CACHE) { FAILED.put(key, System.currentTimeMillis()); }
+            return out;    // not cached for long: the next try in 10 min may reach Wikidata
         }
         synchronized (CACHE) { CACHE.put(key, out); }
         sp.edit().putString(key, System.currentTimeMillis() + "|" + new JSONObject(out)).apply();
@@ -139,7 +145,10 @@ final class DeepLinks {
         }
         String url = "https://www.youtube.com/watch?v=" + key;
         String player = Prefs.trailerPlayer();
-        if ((!player.isEmpty() && open(c, player, url)) || open(c, SMARTTUBE, url) || open(c, "com.google.android.youtube.tv", url)) return;
+        if ((!player.isEmpty() && open(c, player, url)) || open(c, SMARTTUBE, url) || open(c, "com.google.android.youtube.tv", url)) {
+            TrailerReturn.arm(c, key);   // back Home when it ends
+            return;
+        }
         android.widget.Toast.makeText(c, Ui.tr("Instale o SmartTube ou o YouTube para ver trailers", "Install SmartTube or YouTube to watch trailers"), android.widget.Toast.LENGTH_LONG).show();
     }
 
@@ -148,7 +157,10 @@ final class DeepLinks {
         if (p.trailer != null) {   // a trailer: SmartTube, else any YouTube app
             String url = "https://www.youtube.com/watch?v=" + p.trailer;
             String player = Prefs.trailerPlayer();
-            if ((!player.isEmpty() && open(c, player, url)) || open(c, SMARTTUBE, url) || open(c, "com.google.android.youtube.tv", url)) return;
+            if ((!player.isEmpty() && open(c, player, url)) || open(c, SMARTTUBE, url) || open(c, "com.google.android.youtube.tv", url)) {
+                TrailerReturn.arm(c, p.trailer);
+                return;
+            }
         }
         // Settings › Tabs and Stremio › Open movies and shows in: the streaming app (default), Stremio or the page.
         String mode = Prefs.openIn();

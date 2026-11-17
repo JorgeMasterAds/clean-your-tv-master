@@ -54,6 +54,31 @@ final class Backdrop {
         nightImage = night == null ? null : Bitmap.createBitmap(night, FW, FH, Bitmap.Config.ARGB_8888);
     }
 
+    /**
+     * The full-screen hero's shades (left for the title, bottom for the dock, top for the header), baked into the photo
+     * once. Drawn live they were three more full-screen passes on every frame of a fade: ~80 ms of GPU a frame on a TCL
+     * C6K, the title change stuttering. Same gradients HomeView used to draw.
+     */
+    private static Bitmap shade(Bitmap b) {
+        if (!b.isMutable()) {
+            Bitmap m = b.copy(Bitmap.Config.ARGB_8888, true);
+            b.recycle();
+            b = m;
+        }
+        Canvas c = new Canvas(b);
+        float w = b.getWidth(), h = b.getHeight();
+        Paint p = new Paint(Paint.DITHER_FLAG);
+        p.setShader(new LinearGradient(0, 0, w * 0.72f, 0, new int[] {0xD9000000, 0x99000000, 0x33000000, 0x00000000},
+                new float[] {0, 0.35f, 0.7f, 1}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        p.setShader(new LinearGradient(0, h, 0, h * 0.42f, new int[] {0xF2000000, 0xB3000000, 0x40000000, 0x00000000},
+                new float[] {0, 0.3f, 0.7f, 1}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        p.setShader(new LinearGradient(0, 0, 0, h * 0.28f, 0x99000000, 0x00000000, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        return b;
+    }
+
     static Backdrop make(Bitmap src, boolean forLight) {
         Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
@@ -73,6 +98,7 @@ final class Backdrop {
             int[] nightGlass = glass == null ? null : darken(glass, 0.56f);
             // Full-screen hero: the sharp photo behind Home (1280 × 720, 16-bit colour, about 1.8 MB per pick).
             Bitmap sharp = Bitmap.createScaledBitmap(out, 1280, 720, true);
+            sharp = shade(sharp);
             Bitmap hero = sharp.copy(Bitmap.Config.RGB_565, false);
             if (hero != null && hero != sharp) sharp.recycle(); else hero = sharp;
             out.recycle();
