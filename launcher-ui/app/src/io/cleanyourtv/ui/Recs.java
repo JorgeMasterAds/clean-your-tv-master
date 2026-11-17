@@ -44,6 +44,8 @@ final class Recs {
         int id;
         String kind;            // "movie" or "tv"
         String title, backdrop, meta = "", app, pkg;
+        String overview = "";   // the synopsis, in the TV's language (shown when the title is focused)
+        String backdropB;       // a second picture of the title (image B), shown every other 10 minutes for variety
         boolean detailed;
         String trailer;         // YouTube id of the trailer (the "Trailers" category opens it in SmartTube)
         String imdb, video;     // Stremio library ids (continue watching opens the exact episode)
@@ -58,7 +60,7 @@ final class Recs {
     private static final String IMAGES = "https://image.tmdb.org/t/p/original";
     private static final long LIST_EVERY = 6 * 3600_000L;
     /** Bump when what is saved for each title changes (the saved list is discarded and fetched again). */
-    private static final int CACHE_VERSION = 4;
+    private static final int CACHE_VERSION = 6;
     private static final int MANHA = 0, TARDE = 1, NOITE = 2;
     static final String[] PERIOD_LABEL = {"PARA ESTA MANHÃ", "PARA ESTA TARDE", "PARA ESTA NOITE"};
     static final String[] PERIOD_LABEL_RU = {"ЭТИМ УТРОМ", "СЕГОДНЯ ДНЁМ", "СЕГОДНЯ ВЕЧЕРОМ"};
@@ -420,7 +422,7 @@ final class Recs {
     /** The pick's ready backdrop (or null: builds it in the background and notifies when it's ready). */
     Backdrop backdrop(Pick p) {
         if (p == null || p.backdrop == null) return null;
-        final String key = p.backdrop;    // the details may swap the image midway
+        final String key = shown(p);      // the details may swap the image midway
         synchronized (images) {
             Backdrop b = images.get(key);
             if (b != null) return b;
@@ -428,7 +430,7 @@ final class Recs {
         }
         io.execute(() -> {
             try {
-                loadImage(p);
+                loadImage(p, key);
             } finally {
                 synchronized (images) { pending.remove(key); }
             }
@@ -441,7 +443,22 @@ final class Recs {
     }
 
     private File imageFile(Pick p) {
-        return new File(new File(context.getCacheDir(), "recs"), p.backdrop.replace("/", ""));
+        return imageFile(p.backdrop);
+    }
+
+    private File imageFile(String path) {
+        return new File(new File(context.getCacheDir(), "recs"), path.replace("/", ""));
+    }
+
+    /** Image A or B: they take turns every 10 minutes, so the same title doesn't always come with the same picture. */
+    static boolean altTurn() {
+        return (System.currentTimeMillis() / 600_000L) % 2 == 1;
+    }
+
+    /** The picture to show now for this title: image B on its turn, when the title has one. */
+    static String shown(Pick p) {
+        String b = p.backdropB;
+        return altTurn() && b != null && !b.isEmpty() ? b : p.backdrop;
     }
 
     /** With a key: fetches the list if stale or the time of day (morning/afternoon/night) changed; then the details. */
@@ -564,7 +581,7 @@ final class Recs {
                     tried++;
                     try {
                         if (!pick.detailed) fetchDetails(pick);
-                        if (pick.pkg != null) download(pick);
+                        if (pick.pkg != null) download(pick.backdrop);
                     } catch (Exception e) {
                         failures++;
                         last = e.getMessage() == null ? e.toString() : e.getMessage();
@@ -637,7 +654,7 @@ final class Recs {
                 for (Pick p : todo) {
                     try {
                         if (!p.detailed) fetchDetails(p);
-                        if (p.pkg != null) download(p);
+                        if (p.pkg != null) download(p.backdrop);
                     } catch (Exception e) {
                         failures++;
                         last = e.getMessage() == null ? e.toString() : e.getMessage();
@@ -829,8 +846,10 @@ final class Recs {
         JSONObject o = get("/" + p.kind + "/" + p.id
                 + "?language=" + lang() + "&append_to_response=watch/providers,images&include_image_language=null," + Ui.language + ",en");
         p.title = title(p, o);
-        String best = bestBackdrop(o.optJSONObject("images"));
-        if (best != null) p.backdrop = best;
+        p.overview = o.optString("overview", "").trim();
+        String[] best = bestBackdrops(o.optJSONObject("images"));
+        if (best[0] != null) p.backdrop = best[0];
+        p.backdropB = best[1];
         List<String> parts = new ArrayList<>();
         JSONArray genres = o.optJSONArray("genres");
         if (p.kind.equals("tv")) parts.add(Ui.tr("Série", "Series"));
@@ -942,10 +961,11 @@ final class Recs {
      * The title's best backdrop: no text written over it (our own text goes on top of it), the closest to 1920 wide
      * (larger only costs download, disk and decoding) and, on a tie, the highest rated.
      */
-    private static String bestBackdrop(JSONObject images) {
+    private static String[] bestBackdrops(JSONObject images) {
+        // [0] image A, the best; [1] image B, the next best without text (null when the title has no other).
         JSONArray list = images == null ? null : images.optJSONArray("backdrops");
-        String best = null;
-        double bestScore = -1;
+        String best = null, second = null;
+        double bestScore = -1, secondScore = -1;
         for (int i = 0; list != null && i < list.length(); i++) {
             JSONObject b = list.optJSONObject(i);
             if (b == null || b.optString("file_path", "").isEmpty()) continue;
@@ -953,11 +973,18 @@ final class Recs {
             int width = b.optInt("width");
             double score = (textless ? 1e7 : 0) + Math.min(width, 1920) * 100 - Math.max(0, width - 1920) + b.optDouble("vote_average", 0);
             if (score > bestScore) {
+                second = best;
+                secondScore = bestScore;
                 bestScore = score;
                 best = b.optString("file_path");
+            } else if (score > secondScore) {
+                secondScore = score;
+                second = b.optString("file_path");
             }
         }
-        return best;
+        // B must be a clean picture (no title written on it) and wide enough not to look soft on the TV.
+        if (secondScore < 1e7 + 1280 * 100) second = null;
+        return new String[] {best, second};
     }
 
     private String[] service(String name) {
@@ -1009,13 +1036,13 @@ final class Recs {
 
     // MARK: - Images (TMDB originals on disk, up to 24 so the whole list fits; this hour's kept ready in memory)
 
-    private void download(Pick p) throws IOException {
-        File f = imageFile(p);
+    private void download(String path) throws IOException {
+        File f = imageFile(path);
         if (f.exists()) return;
         //noinspection ResultOfMethodCallIgnored
         f.getParentFile().mkdirs();
         File part = new File(f.getPath() + ".part");
-        HttpURLConnection c = (HttpURLConnection) new URL(IMAGES + p.backdrop).openConnection();
+        HttpURLConnection c = (HttpURLConnection) new URL(IMAGES + path).openConnection();
         c.setConnectTimeout(8000);
         c.setReadTimeout(20000);
         try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(part)) {
@@ -1034,13 +1061,13 @@ final class Recs {
     }
 
     /** Reads the original (≥ 1920 wide) and builds the backdrop (Backdrop: cards plus frosted and glass versions). */
-    private void loadImage(Pick p) {
+    private void loadImage(Pick p, String key) {
         synchronized (images) {
-            if (images.containsKey(p.backdrop)) return;
+            if (images.containsKey(key)) return;
         }
-        File f = imageFile(p);
+        File f = imageFile(key);
         try {
-            download(p);
+            download(key);
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;
             BitmapFactory.decodeFile(f.getPath(), bounds);
@@ -1054,7 +1081,7 @@ final class Recs {
             Backdrop backdrop = Backdrop.make(b, forLight);
             if (forLight != light) return;   // the design changed midway: this one is stale
             synchronized (images) {
-                images.put(p.backdrop, backdrop);
+                images.put(key, backdrop);
                 while (images.size() > (forLight ? 10 : 4)) images.remove(images.keySet().iterator().next());
             }
             notifyListeners();
@@ -1068,7 +1095,7 @@ final class Recs {
     void trim() {
         // Explore's picks stay: the home screen opens on that tab, so its cards are never gray when you come back.
         java.util.Set<String> keep = new java.util.HashSet<>();
-        for (Pick p : now(null)) if (p.backdrop != null) keep.add(p.backdrop);
+        for (Pick p : now(null)) if (p.backdrop != null) keep.add(shown(p));
         synchronized (images) {
             images.keySet().retainAll(keep);
         }
@@ -1083,9 +1110,9 @@ final class Recs {
             if (parts[i].lastModified() < stale) parts[i].delete();
         }
         File[] files = dir.listFiles((d, name) -> !name.endsWith(".part"));
-        if (files == null || files.length <= 24) return;
+        if (files == null || files.length <= 48) return;
         Arrays.sort(files, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
-        for (int i = 0; i < files.length - 24; i++) {
+        for (int i = 0; i < files.length - 48; i++) {
             //noinspection ResultOfMethodCallIgnored
             files[i].delete();
         }
@@ -1098,6 +1125,7 @@ final class Recs {
             JSONArray a = new JSONArray();
             for (Pick p : picks) {
                 a.put(new JSONObject().put("id", p.id).put("kind", p.kind).put("title", p.title).put("backdrop", p.backdrop)
+                        .put("backdropB", p.backdropB == null ? "" : p.backdropB).put("overview", p.overview)
                         .put("meta", p.meta).put("app", p.app == null ? "" : p.app).put("pkg", p.pkg == null ? "" : p.pkg)
                         .put("detailed", p.detailed));
             }
@@ -1118,6 +1146,8 @@ final class Recs {
             p.kind = o.optString("kind");
             p.title = o.optString("title");
             p.backdrop = o.optString("backdrop");
+            p.backdropB = o.optString("backdropB").isEmpty() ? null : o.optString("backdropB");
+            p.overview = o.optString("overview");
             p.meta = o.optString("meta");
             p.app = o.optString("app").isEmpty() ? null : o.optString("app");
             p.pkg = o.optString("pkg").isEmpty() ? null : o.optString("pkg");

@@ -354,6 +354,47 @@ def make_art(g, cfg):
     return None
 
 
+def make_art_b(g, cfg):
+    """Image B, a second wide picture the TV shows every other 10 minutes for variety: your own
+    (game-art-own/<name>.b.jpg), else Steam's other one (the library hero when A is your own picture, else a
+    screenshot from the game's store page). Only for games whose Steam page is known, so it is never another game's."""
+    name = norm(g["name"])
+    own = os.path.join(ART_OWN, name + ".b.jpg")
+    if os.path.exists(own) and os.path.getsize(own) > 1000:
+        return own
+    path = os.path.join(ART, name + ".b.jpg")
+    if os.path.exists(path) and os.path.getsize(path) > 1000:
+        return path
+    miss = os.path.join(ART, name + ".b.none")
+    if os.path.exists(miss) and time.time() - os.path.getmtime(miss) < 7 * 86400:
+        return None
+    # The same Steam page image A came from (its hero is on disk), or one you named in "search".
+    trusted = g["name"] in cfg.get("search", {}) or os.path.exists(os.path.join(ART, name + ".jpg"))
+    appid = g.get("steam") or (steam_id_for(cfg.get("search", {}).get(g["name"], g["name"])) if trusted else None)
+    urls = []
+    if appid:
+        if os.path.exists(os.path.join(ART_OWN, name + ".jpg")):
+            urls.append("https://cdn.cloudflare.steamstatic.com/steam/apps/%s/library_hero.jpg" % appid)
+        try:
+            d = json.loads(fetch("https://store.steampowered.com/api/appdetails?appids=%s&filters=screenshots" % appid))
+            shots = (d.get(str(appid), {}).get("data") or {}).get("screenshots") or []
+            urls += [s["path_full"] for s in shots[:3] if s.get("path_full")]
+        except Exception:
+            pass
+    os.makedirs(ART, exist_ok=True)
+    for url in urls:
+        try:
+            data = fetch(url)
+            if data and len(data) > 5000:
+                with open(path, "wb") as f:
+                    f.write(data)
+                return path
+        except Exception:
+            pass
+    open(miss, "w").close()   # no image B: the TV keeps image A; asked again in a week
+    return None
+
+
 def played_on_tv():
     try:
         with open(PLAYED, encoding="utf-8") as f:
@@ -875,7 +916,8 @@ def handler(cfg):
             if u.path == "/api/status" and method == "GET":
                 return self.send(200, json.dumps({k: RUN[k] for k in ("state", "game", "error")}, ensure_ascii=False).encode("utf-8"))
             if u.path == "/api/art" and method == "GET":
-                p = make_art(g, cfg) if g else None
+                want_b = (q.get("b") or [""])[0] == "1"
+                p = (make_art_b(g, cfg) if want_b else make_art(g, cfg)) if g else None
                 if not p:
                     return self.send(404, b'{"error":"no art"}')
                 with open(p, "rb") as f:

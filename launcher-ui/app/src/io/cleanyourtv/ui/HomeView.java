@@ -202,6 +202,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private boolean gamesLoading, gameMoving;
     private final Map<String, Backdrop> gameArt = new java.util.LinkedHashMap<>();
     private final java.util.Set<String> gameArtLoading = new java.util.HashSet<>();
+    private final java.util.Set<String> gameNoB = new java.util.HashSet<>();   // games the PC has no image B for
     // The category row under the tabs (Trailers, Top 10, Marvel...): focusing a pill shows that list.
     private static final float CHIP_TOP = 248, CHIP_H = 54, CHIP_GAP = 14;
     private int chipIndex;
@@ -1830,20 +1831,34 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void showGameArt() {
         if (zone != Z_GAMES || gameIndex >= gameItems.size()) return;
         Games.Game g = gameItems.get(gameIndex);
-        Backdrop have = gameArt.get(g.id);
+        // Image A or B, taking turns every 10 minutes like the titles' (B: another picture the PC finds for the game).
+        boolean alt = Recs.altTurn() && !gameNoB.contains(g.id);
+        String key = alt ? g.id + "#b" : g.id;
+        Backdrop have = gameArt.get(key);
         if (have != null) {
             showBackdrop(have);
             return;
         }
-        if (!gameArtLoading.add(g.id)) return;
+        if (!gameArtLoading.add(key)) return;
+        boolean haveA = gameArt.containsKey(g.id);
         new Thread(() -> {
-            Bitmap b = g.art == null ? null : Images.fetch(g.art);
+            Bitmap b = g.art == null || !alt ? null : Images.fetch(g.art + "&b=1");
+            if (b == null && alt) post(() -> gameNoB.add(g.id));   // asked once per run of the app
+            if (b == null && alt && haveA) {   // no image B for this game: A again
+                post(() -> {
+                    gameArtLoading.remove(key);
+                    Backdrop a = gameArt.get(g.id);
+                    if (a != null && zone == Z_GAMES && gameIndex < gameItems.size() && gameItems.get(gameIndex) == g) showBackdrop(a);
+                });
+                return;
+            }
+            if (b == null && g.art != null) b = Images.fetch(g.art);
             if (b == null && g.cover != null) b = g.cover.copy(Bitmap.Config.ARGB_8888, false);   // make() recycles what it gets
             Backdrop made = b == null ? null : Backdrop.make(b, true);
             post(() -> {
-                gameArtLoading.remove(g.id);
+                gameArtLoading.remove(key);
                 if (made == null) return;
-                gameArt.put(g.id, made);
+                gameArt.put(key, made);
                 while (gameArt.size() > 6) gameArt.remove(gameArt.keySet().iterator().next());
                 if (zone == Z_GAMES && gameIndex < gameItems.size() && gameItems.get(gameIndex) == g) showBackdrop(made);
                 wake();
@@ -3530,11 +3545,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (p == null) return;
         float x = MARGIN * k, maxW = 1300 * k;
         boolean focused = zone == Z_CARDS;
+        // Focused on the title (not on the Trailer button): the block grows upwards and the short synopsis shows
+        // between the genre line and the dots.
+        List<String> about = focused && !trailerFocus ? synopsisLines(p) : java.util.Collections.emptyList();
+        float lift = about.isEmpty() ? 0 : about.size() * 38 * k + 10 * k;
         if (p.cont) {
             // "Continue watching" badge above the title, so it never reads like a suggestion.
             String badge = "CONTINUAR ASSISTINDO";
             if (heroBadge == null) heroBadge = Ui.text(Ui.semibold, 17 * k, L_INK);
-            float bw = heroBadge.measureText(badge) + 24 * k, bh = 30 * k, top = 432 * k;
+            float bw = heroBadge.measureText(badge) + 24 * k, bh = 30 * k, top = 432 * k - lift;
             fill.setShader(null);
             fill.setColor(0xFFFFFFFF);   // white with dark text: red read like "live"
             tmp.set(x, top, x + bw, top + bh);
@@ -3543,12 +3562,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         fitPaint.set(heroTitle);
         String title = TextUtils.ellipsize(p.title, fitPaint, maxW, TextUtils.TruncateAt.END).toString();
-        c.drawText(title, x - Ui.leftBearing(heroTitle, title), 520 * k, heroTitle);
+        c.drawText(title, x - Ui.leftBearing(heroTitle, title), 520 * k - lift, heroTitle);
         if (p.meta != null && !p.meta.isEmpty()) {
             fitPaint.set(heroMeta);
             String meta = TextUtils.ellipsize(p.meta, fitPaint, maxW, TextUtils.TruncateAt.END).toString();
-            c.drawText(meta, x, 570 * k, heroMeta);
+            c.drawText(meta, x, 570 * k - lift, heroMeta);
         }
+        for (int i = 0; i < about.size(); i++) c.drawText(about.get(i), x, 570 * k - lift + 46 * k + i * 38 * k, heroSynopsis);
         if (p.cont && p.progress > 0) {   // where you stopped: a progress bar under the line
             float pw = 520 * k, py = 590 * k, ph = 8 * k;
             fill.setShader(null);
@@ -3583,6 +3603,44 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawText(hint, bx + 18 * k, by + bh / 2 + Ui.halfCap(heroHint), heroHint);
         }
         if (hasTrailerButton(p)) drawTrailerButton(c, x, 662 * k, focused && trailerFocus);
+    }
+
+    private Paint heroSynopsis;
+    private Recs.Pick synopsisFor;
+    private String synopsisText;
+    private List<String> synopsis = java.util.Collections.emptyList();
+
+    /** The synopsis in at most 3 lines (… at the end when longer), laid out once per title. */
+    private List<String> synopsisLines(Recs.Pick p) {
+        if (heroSynopsis == null) {
+            heroSynopsis = Ui.text(Ui.regular, 27 * k, 0xE6FFFFFF);
+            heroSynopsis.setShadowLayer(10 * k, 0, 2 * k, 0x99000000);
+        }
+        if (p == synopsisFor && p.overview == synopsisText) return synopsis;   // the details may bring it later
+        synopsisFor = p;
+        synopsisText = p.overview;
+        List<String> out = new ArrayList<>();
+        String rest = p.overview == null ? "" : p.overview.replaceAll("\\s+", " ").trim();
+        float w = 1100 * k;
+        while (!rest.isEmpty() && out.size() < 3) {
+            int n = heroSynopsis.breakText(rest, true, w, null);
+            if (n >= rest.length()) {
+                out.add(rest);
+                rest = "";
+                break;
+            }
+            int cut = rest.lastIndexOf(' ', n);
+            if (cut <= 0) cut = n;
+            out.add(rest.substring(0, cut).trim());
+            rest = rest.substring(cut).trim();
+        }
+        if (!rest.isEmpty() && !out.isEmpty()) {   // more than 3 lines: the last one ends in …
+            fitPaint.set(heroSynopsis);
+            int last = out.size() - 1;
+            out.set(last, TextUtils.ellipsize(out.get(last) + " " + rest, fitPaint, w, TextUtils.TruncateAt.END).toString());
+        }
+        synopsis = out;
+        return out;
     }
 
     private void drawGameText(Canvas c) {
