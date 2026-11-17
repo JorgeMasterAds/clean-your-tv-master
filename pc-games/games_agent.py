@@ -964,7 +964,7 @@ def handler(cfg):
             q = urllib.parse.parse_qs(u.query)
             if u.path == "/api/ping":
                 return self.send(200, json.dumps({"ok": True, "name": socket.gethostname()}).encode())
-            if u.path == "/api/pair" and private(self.client_address[0]):
+            if u.path == "/api/pair" and private(self.client_address[0]) and ip_host(self.headers.get("Host", "")):
                 # A TV found this PC on the network and asks to connect: the person allows it on the PC's screen.
                 tv = ((q.get("tv") or [""])[0] or "TV")[:40]
                 if not ask_pair(tv, self.client_address[0]):
@@ -1048,6 +1048,19 @@ def handler(cfg):
 PAIR_LOCK = threading.Lock()
 
 
+def ip_host(host):
+    """The address the request was sent to is a bare IP (as the TV sends it), never a name: a web page that points a
+    name of its own at this PC (DNS rebinding) can't read the access code."""
+    h = host.rsplit(":", 1)[0].strip("[]") if host.count(":") <= 1 or host.startswith("[") else host
+    if h == "localhost":
+        return True
+    try:
+        ipaddress.ip_address(h)
+        return True
+    except ValueError:
+        return False
+
+
 def ask_pair(tv, ip):
     """Windows dialog on top of everything: Yes gives that TV the access code. One question at a time."""
     if not PAIR_LOCK.acquire(blocking=False):
@@ -1057,6 +1070,10 @@ def ask_pair(tv, ip):
         text = ("A TV \"%s\" (%s) quer mostrar os jogos deste computador e abri-los pelo controle.\n\n"
                 "Permitir?" % (tv, ip))
         # MB_YESNO | MB_ICONQUESTION | MB_TOPMOST | MB_SETFOREGROUND
+        # Gone by itself after a minute (as No): a request nobody answers never stays open on the screen.
+        box = getattr(ctypes.windll.user32, "MessageBoxTimeoutW", None)
+        if box:
+            return box(None, text, "Jogos do PC na TV", 0x4 | 0x20 | 0x40000 | 0x10000, 0, 60000) == 6
         return ctypes.windll.user32.MessageBoxW(None, text, "Jogos do PC na TV", 0x4 | 0x20 | 0x40000 | 0x10000) == 6
     except Exception as e:
         log("pair: %s" % e)
@@ -1117,8 +1134,9 @@ def main():
     threading.Thread(target=answer_discovery, args=(cfg,), daemon=True).start()
     if cfg.get("pad_close", ["view", "menu"]) or cfg.get("pad_shortcuts"):
         threading.Thread(target=watch_pad, args=(cfg,), daemon=True).start()
-    if os.path.exists(SAVED) and not game_running(cfg):   # the PC was turned off mid-game: screens back first
-        restore_screens()
+    if os.path.exists(SAVED) and not game_running(cfg):   # the PC was turned off mid-game: screens back
+        # In the background: it takes ~20 s, and the TV couldn't find the PC meanwhile.
+        threading.Thread(target=restore_screens, daemon=True).start()
     elif os.path.exists(SAVED):
         threading.Thread(target=watch_game, args=(cfg,), daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", int(cfg["port"])), handler(cfg))
