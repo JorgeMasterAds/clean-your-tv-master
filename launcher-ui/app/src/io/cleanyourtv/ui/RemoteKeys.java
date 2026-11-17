@@ -105,6 +105,13 @@ final class RemoteKeys {
         if ((source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
                 || (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) return false;
         int keyCode = e.getKeyCode() == 4065 ? KeyEvent.KEYCODE_BUTTON_3 : e.getKeyCode();   // TCL's own YouTube key
+        // The remote's settings (gear) key. A TCL Google TV remote sends NOTIFICATION (its key 204, "dashboard"), other
+        // remotes SETTINGS: both open a side panel that belongs to the stock Home (launcherx). With that Home switched off
+        // by the cleanup, SystemUI finds no panel and the key does nothing: the TV's Settings open instead.
+        if ((keyCode == KeyEvent.KEYCODE_SETTINGS || keyCode == KeyEvent.KEYCODE_NOTIFICATION) && !stockPanel(c)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) run(c, "settings");
+            return true;
+        }
         String scan = "s" + e.getScanCode(), key = "k" + keyCode;
         Button found = null;
         for (Button b : buttons(c)) {
@@ -116,6 +123,15 @@ final class RemoteKeys {
         if (action.isEmpty()) return false;
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) run(c, action);
         return true;
+    }
+
+    /** Google TV's own settings panel is there (the stock Home is on): the gear key is left to it. */
+    private static boolean stockPanel(Context c) {
+        try {
+            return c.getPackageManager().getApplicationInfo("com.google.android.apps.tv.launcherx", 0).enabled;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     static void run(Context c, String action) {

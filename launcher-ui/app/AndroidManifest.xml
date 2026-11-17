@@ -16,6 +16,7 @@
          (for "All Apps"). -->
     <queries>
         <package android:name="com.netflix.ninja" />
+        <package android:name="com.google.android.apps.tv.launcherx" />
         <package android:name="com.google.android.youtube.tv" />
         <package android:name="com.amazon.amazonvideo.livingroom" />
         <package android:name="com.disney.disneyplus" />
