@@ -540,6 +540,16 @@ final class Recs {
                     p.video = st.optString("video_id");
                     p.pkg = DeepLinks.STREMIO;
                     p.app = "Stremio";
+                    try {   // the synopsis and a second picture (image B), like every other title
+                        JSONObject d = get("/" + p.kind + "/" + p.id + "?language=" + lang()
+                                + "&append_to_response=images&include_image_language=null," + Ui.language + ",en");
+                        p.overview = d.optString("overview", "").trim();
+                        String[] best = bestBackdrops(d.optJSONObject("images"));
+                        if (best[0] != null) p.backdrop = best[0];
+                        p.backdropB = best[1];
+                    } catch (Exception e) {
+                        AppLog.w("continue details: " + e.getMessage());
+                    }
                     p.detailed = true;
                     p.cont = true;
                     out.add(p);
