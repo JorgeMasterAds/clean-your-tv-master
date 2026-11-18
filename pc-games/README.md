@@ -10,7 +10,7 @@ Mostra na TV os jogos instalados no computador, com capa. OK num jogo abre o jog
 
 ## Instalar
 
-1. Python 3.8 ou mais novo no PC.
+1. Python 3.8 ou mais novo no PC. Para o som ir para a TV junto com a imagem: `pip install pycaw comtypes` (sem isso o jogo abre normal, só o som não troca).
 2. Rode uma vez `python games_agent.py --list` para ver a lista.
 3. Para iniciar com o Windows: atalho para `iniciar-jogos.vbs` em `shell:startup`.
 4. Ligue a TV ao PC pela própria TV: Configurações › Abas e reprodução › **Jogos do PC** › OK. A TV procura o PC na rede

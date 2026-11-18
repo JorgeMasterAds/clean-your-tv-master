@@ -3559,7 +3559,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             // "Continue watching" badge above the title, so it never reads like a suggestion.
             String badge = "CONTINUAR ASSISTINDO";
             if (heroBadge == null) heroBadge = Ui.text(Ui.semibold, 17 * k, L_INK);
-            float bw = heroBadge.measureText(badge) + 24 * k, bh = 30 * k, top = 432 * k - lift;
+            float bw = heroBadge.measureText(badge) + 24 * k, bh = 30 * k, top = 396 * k - lift;
             fill.setShader(null);
             fill.setColor(0xFFFFFFFF);   // white with dark text: red read like "live"
             tmp.set(x, top, x + bw, top + bh);
@@ -3568,7 +3568,26 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         fitPaint.set(heroTitle);
         String title = TextUtils.ellipsize(p.title, fitPaint, maxW, TextUtils.TruncateAt.END).toString();
+        boolean onTitle = focused && !trailerFocus;
+        if (onTitle) {   // on the title: white background, dark text and a play mark, so it is clear OK plays it
+            float tw = Math.min(maxW, heroTitle.measureText(title)), base = 520 * k - lift, pad = 18 * k;
+            fill.setShader(null);
+            fill.setStyle(Paint.Style.FILL);
+            fill.setColor(0xFFFFFFFF);
+            tmp.set(x - pad, base - 62 * k, x + tw + pad + 70 * k, base + 14 * k);
+            c.drawRoundRect(tmp, 18 * k, 18 * k, fill);
+            float cx = x + tw + pad + 30 * k, cy = base - 22 * k, r = 20 * k;
+            Path tri = new Path();
+            tri.moveTo(cx - r * 0.7f, cy - r);
+            tri.lineTo(cx + r * 0.9f, cy);
+            tri.lineTo(cx - r * 0.7f, cy + r);
+            tri.close();
+            fill.setColor(L_INK);
+            c.drawPath(tri, fill);
+            heroTitle.setColor(L_INK);
+        }
         c.drawText(title, x - Ui.leftBearing(heroTitle, title), 520 * k - lift, heroTitle);
+        if (onTitle) heroTitle.setColor(0xFFFFFFFF);
         if (p.meta != null && !p.meta.isEmpty()) {
             fitPaint.set(heroMeta);
             String meta = TextUtils.ellipsize(p.meta, fitPaint, maxW, TextUtils.TruncateAt.END).toString();

@@ -706,6 +706,13 @@ def restore_screens():
                 log("screens restored")
         except Exception as e:
             log("restore: %s" % e)
+        try:
+            import audio
+            note = audio.restore(SAVED + ".audio")
+            if note:
+                log("audio: " + note)
+        except Exception as e:
+            log("audio restore: %s" % e)
 
 
 def watch_game(cfg):
@@ -728,6 +735,24 @@ def watch_game(cfg):
         restore_screens()
     finally:
         WATCH["on"] = False
+
+
+def tv_sound(tv_monitor):
+    """The TV's speakers become the PC's sound output while the game is on the TV (its output shows up a few seconds
+    after the screen does, so it is looked for for a while)."""
+    try:
+        import audio
+        import displays
+        tv = displays.find_tv(tv_monitor)
+        name = displays.friendly(tv) if tv else ""
+        for _ in range(10):
+            note = audio.to_tv(name, SAVED + ".audio")
+            if note.startswith("som"):
+                break
+            time.sleep(1)
+        log("audio: " + note)
+    except Exception as e:
+        log("audio: %s" % e)
 
 
 RUN = {"state": "idle", "game": "", "error": "", "at": 0}
@@ -805,6 +830,7 @@ def launch(g, cfg, screen=""):
                 log("tv_only: the TV took long to become the only screen")
         except Exception as e:
             log("tv_only: %s" % e)
+        tv_sound(cfg["tv_monitor"])   # the sound follows the picture
     before = cfg.get("before_launch")
     if before:
         try:

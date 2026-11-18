@@ -180,7 +180,10 @@ final class DeepLinks {
         if (p.cont && p.imdb != null && p.imdb.startsWith("tt")) {
             boolean movie = "movie".equals(p.kind);
             String video = p.video != null && !p.video.isEmpty() ? p.video : p.imdb;
-            if (open(c, STREMIO, "stremio:///detail/" + (movie ? "movie" : "series") + "/" + p.imdb + "/" + video)) return;
+            if (open(c, STREMIO, "stremio:///detail/" + (movie ? "movie" : "series") + "/" + p.imdb + "/" + video)) {
+                RemoteKeys.markContinue(c);   // Back inside Stremio returns here, not to Stremio's own home
+                return;
+            }
         }
         // Not on any of the TV's services (or Stremio chosen): its page in Stremio.
         openInStremio(c, p.kind, p.id);
