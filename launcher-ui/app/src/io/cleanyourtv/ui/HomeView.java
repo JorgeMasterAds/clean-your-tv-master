@@ -408,6 +408,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private Paint trailerLabel;
     private boolean drawerWasMoving, idle;
     private long lastNanos, resumedAt, lastStep;
+    /** Home appearing: 0 → 1 over INTRO_MS. The background settles in, then the greeting and the text, then the dock rise. */
+    private static final long INTRO_MS = 1300;
+    private long introAt;
+    private float intro = 1;
     private int w, h;
     private float k = 1;
     private String clockText = "", dateText = "", weatherLine = "";
@@ -591,6 +595,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         running = true;
         checkNight(false);
         resumedAt = SystemClock.uptimeMillis();
+        introAt = resumedAt;
+        intro = 0;
         lastNanos = 0;
         lastStep = 0;
         data.addListener(this);
@@ -847,8 +853,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean heroFading = tickHeroFade(up);
         boolean bgFading = tickBackgroundFade(up);
         boolean nightMoving = tickNight(up);
+        boolean introMoving = intro < 1;
+        if (introMoving) intro = Math.min(1f, (up - introAt) / (float) INTRO_MS);
 
-        if (drawerMoving || sheetMoving || motionDirty) updateMotion();
+        if (drawerMoving || sheetMoving || motionDirty || introMoving) updateMotion();
         // Opening and closing the drawer only moves the cached layers: redrawing the glass on every frame made the TV
         // drop frames (measured: ~50 ms of GPU per frame). The app tiles have no glass; the top buttons fade out as
         // they rise; the drawer is drawn resting in place; the glass shelf is redrawn once the drawer stops, so the
@@ -874,7 +882,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
         // Busy: something is moving, or the sheet or the drawer is open.
         boolean busy = tilesMoving || statusMoving || heroMoving || drawerItemsMoving || gridMoving || drawerMoving
-                || sheetMoving || toastFading || heroFading || bgFading || nightMoving || sheetOpen || sheet.value > 0.001f
+                || sheetMoving || toastFading || heroFading || bgFading || nightMoving || introMoving || sheetOpen || sheet.value > 0.001f
                 || drawerOpen || drawer.value > 0.001f || gamesRow.value > 0.001f || toast != null || !toasts.isEmpty();
         idle = !busy;
         if (busy) Choreographer.getInstance().postFrameCallback(this);
@@ -905,12 +913,17 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             // into view when Down is pressed on the dock.
             // Down once more on the row: everything rises again and the games dock comes up under it.
             float g = smoothstep(0, 1, Ui.clamp(gamesRow.value)), lift = GAMES_LIFT * k * g;
-            show(heroLayer, home, 0);
-            show(status, home, 0);
+            // Home appearing: the photo settles (a slow zoom out), then the text and the tabs float up, then the dock.
+            float t = intro, ph = smoothstep(0.04f, 0.6f, t), ps = smoothstep(0.1f, 0.7f, t), pt = smoothstep(0.28f, 1f, t);
+            float settle = 1 + 0.05f * (1 - smoothstep(0, 1, t)) * (1 - smoothstep(0, 1, t));
+            sky.setScaleX(settle);
+            sky.setScaleY(settle);
+            show(heroLayer, home * ph, 30 * k * (1 - ph));
+            show(status, home * ps, -16 * k * (1 - ps));
             // The dock rests at the foot of the screen and rises to make room for the row.
             float drop = HERO_DOCK_DROP * k * (1 - dc);
-            show(platter, home * (1 - g), drop - lift);
-            show(tiles, home * (1 - g), drop - lift);
+            show(platter, home * (1 - g) * pt, drop - lift + 80 * k * (1 - pt));
+            show(tiles, home * (1 - g) * pt, drop - lift + 80 * k * (1 - pt));
             float ra = home * smoothstep(0.05f, 0.7f, dc);
             drawerLayer.setTranslationY((HERO_ROW_SHIFT + 36 * (1 - dc)) * k - lift);
             drawerLayer.setAlpha(ra);
@@ -2621,6 +2634,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         click.move();
     }
 
+    /** The leftmost tab that is on (Continue, else Explore). */
+    private int firstTab() {
+        for (int i = 0; i < NT; i++) if (tabShown(i)) return i;
+        return EXPLORE_TAB;
+    }
+
     private static int nearest(RectF[] rects, float x) {
         int best = 0;
         float bestDistance = Float.MAX_VALUE;
@@ -3569,25 +3588,22 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         fitPaint.set(heroTitle);
         String title = TextUtils.ellipsize(p.title, fitPaint, maxW, TextUtils.TruncateAt.END).toString();
         boolean onTitle = focused && !trailerFocus;
-        if (onTitle) {   // on the title: white background, dark text and a play mark, so it is clear OK plays it
-            float tw = Math.min(maxW, heroTitle.measureText(title)), base = 520 * k - lift, pad = 18 * k;
+        if (onTitle) {   // on the title: an underline and a play mark, so it is clear OK plays it
+            float tw = Math.min(maxW, heroTitle.measureText(title)), base = 520 * k - lift;
             fill.setShader(null);
             fill.setStyle(Paint.Style.FILL);
             fill.setColor(0xFFFFFFFF);
-            tmp.set(x - pad, base - 62 * k, x + tw + pad + 70 * k, base + 14 * k);
-            c.drawRoundRect(tmp, 18 * k, 18 * k, fill);
-            float cx = x + tw + pad + 30 * k, cy = base - 22 * k, r = 20 * k;
+            tmp.set(x, base + 14 * k, x + tw, base + 20 * k);
+            c.drawRoundRect(tmp, 3 * k, 3 * k, fill);
+            float cx = x + tw + 40 * k, cy = base - 22 * k, r = 20 * k;
             Path tri = new Path();
             tri.moveTo(cx - r * 0.7f, cy - r);
             tri.lineTo(cx + r * 0.9f, cy);
             tri.lineTo(cx - r * 0.7f, cy + r);
             tri.close();
-            fill.setColor(L_INK);
             c.drawPath(tri, fill);
-            heroTitle.setColor(L_INK);
         }
         c.drawText(title, x - Ui.leftBearing(heroTitle, title), 520 * k - lift, heroTitle);
-        if (onTitle) heroTitle.setColor(0xFFFFFFFF);
         if (p.meta != null && !p.meta.isEmpty()) {
             fitPaint.set(heroMeta);
             String meta = TextUtils.ellipsize(p.meta, fitPaint, maxW, TextUtils.TruncateAt.END).toString();
@@ -3870,7 +3886,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     topIndex = picksOn() ? tab : NT;
                 } else {
                     zone = Z_CARDS;
-                    cardIndex = nearest(cardRects, cards.size(), tileRects[shelfIndex].centerX());
+                    cardIndex = 0;   // always the leftmost
                 }
                 break;
             case Z_CARDS:
@@ -3900,7 +3916,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     updateCards();      // ready the other tabs' first pages
                 } else {
                     zone = Z_SHELF;
-                    if (!shelf.isEmpty()) shelfIndex = nearest(tileRects, tileRects.length, cardRects[cardIndex].centerX());
+                    shelfIndex = 0;   // always the leftmost app
                 }
                 heroFollow();
                 break;
@@ -3909,7 +3925,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     showCategory(Math.floorMod(Recs.categoryIndex() + (Ui.he ? -dx : dx), Recs.CATEGORIES.length));
                 } else if (dy < 0) {
                     zone = Z_TOP;
-                    topIndex = EXPLORE_TAB;
+                    topIndex = firstTab();   // always the leftmost tab
+                    if (topIndex != GAMES_TAB) selectTab(topIndex);
                 } else if (cards.isEmpty()) {
                     return true;    // the list is still loading: the focus waits on the pill
                 } else {
@@ -3940,11 +3957,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                         zone = Z_SHELF;
                     } else {
                         zone = Z_CARDS;
-                        cardIndex = nearest(cardRects, cards.size(), topRects[topIndex].centerX());
+                        cardIndex = 0;
                         updateCards();      // ready the pages ← → turn to
                     }
                 } else if (topIndex < NT) {
-                    topIndex = NT;   // up from the tabs: the Settings button
+                    return true;   // up from the tabs: nowhere (Settings is one → away along the row)
                 } else {
                     return true;
                 }
