@@ -25,7 +25,6 @@ public class HomeActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         TvConfig.apply(this);
-        RemoteKeys.clearContinue(this);   // back on Home: Stremio's Back is Stremio's again
         KeysHeal.check(this);   // the remote's buttons, back on after an update of this app
         if (prefsVersion != Prefs.version) {
             prefsVersion = Prefs.version;
@@ -45,7 +44,7 @@ public class HomeActivity extends Activity {
     /** Home button pressed on the home screen: back to the entry state (focus on the first app, sheet closed). */
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (home != null && !intent.getBooleanExtra("keep", false)) home.reset(true);
+        if (home != null) home.reset(true);
         openFrom(intent);
     }
 

@@ -99,49 +99,7 @@ final class RemoteKeys {
     }
 
     /** Runs the button's action on its first press. True if the key is one of ours and in use (then consumed). */
-    /** The app on screen, from the accessibility service's window events (only the service's process sets it). */
-    static volatile String foreground = "";
-
-    private static java.io.File continueMark(Context c) {
-        return new java.io.File(c.getFilesDir(), "continue-open");
-    }
-
-    /** A title from Continue was just opened in Stremio: Back from it returns to Home, kept as it was. */
-    static void markContinue(Context c) {
-        try {
-            java.io.File f = continueMark(c);
-            if (!f.exists()) f.createNewFile();
-            f.setLastModified(System.currentTimeMillis());
-        } catch (Exception ignored) {
-        }
-    }
-
-    static void clearContinue(Context c) {
-        continueMark(c).delete();
-    }
-
-    /**
-     * Back inside Stremio, opened from Continue: Stremio's own Back would land on its home page. While something plays
-     * Back is left to Stremio (it stops the player); otherwise it returns to this Home, with Continue as it was.
-     */
-    private static boolean backToHome(Context c, KeyEvent e) {
-        if (!DeepLinks.STREMIO.equals(foreground)) return false;
-        java.io.File f = continueMark(c);
-        if (!f.exists() || System.currentTimeMillis() - f.lastModified() > 6 * 3600_000L) return false;
-        android.media.AudioManager am = (android.media.AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
-        if (am != null && am.isMusicActive()) return false;
-        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-            try {
-                c.startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                        .setPackage(c.getPackageName()).putExtra("keep", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } catch (Exception ignored) {
-            }
-        }
-        return true;
-    }
-
     static boolean onKey(Context c, KeyEvent e) {
-        if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && backToHome(c, e)) return true;
         // BUTTON_3 is also a game controller's button: keys from a gamepad or a joystick are left alone.
         int source = e.getSource();
         if ((source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
@@ -181,6 +139,7 @@ final class RemoteKeys {
         AppLog.w("remote button -> " + action + (intent == null ? " (not available)" : ""));
         if (intent == null) return;
         try {
+            TrailerReturn.cancel();   // another app on purpose: a trailer's return must not pull Home over it
             c.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         } catch (ActivityNotFoundException | SecurityException ignored) {
         }

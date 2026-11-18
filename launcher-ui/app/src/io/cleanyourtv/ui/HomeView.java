@@ -3588,13 +3588,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         fitPaint.set(heroTitle);
         String title = TextUtils.ellipsize(p.title, fitPaint, maxW, TextUtils.TruncateAt.END).toString();
         boolean onTitle = focused && !trailerFocus;
-        if (onTitle) {   // on the title: an underline and a play mark, so it is clear OK plays it
+        if (onTitle) {   // on the title: a play mark, so it is clear OK plays it
             float tw = Math.min(maxW, heroTitle.measureText(title)), base = 520 * k - lift;
             fill.setShader(null);
             fill.setStyle(Paint.Style.FILL);
             fill.setColor(0xFFFFFFFF);
-            tmp.set(x, base + 14 * k, x + tw, base + 20 * k);
-            c.drawRoundRect(tmp, 3 * k, 3 * k, fill);
             float cx = x + tw + 40 * k, cy = base - 22 * k, r = 20 * k;
             Path tri = new Path();
             tri.moveTo(cx - r * 0.7f, cy - r);

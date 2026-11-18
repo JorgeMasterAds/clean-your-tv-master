@@ -180,10 +180,7 @@ final class DeepLinks {
         if (p.cont && p.imdb != null && p.imdb.startsWith("tt")) {
             boolean movie = "movie".equals(p.kind);
             String video = p.video != null && !p.video.isEmpty() ? p.video : p.imdb;
-            if (open(c, STREMIO, "stremio:///detail/" + (movie ? "movie" : "series") + "/" + p.imdb + "/" + video)) {
-                RemoteKeys.markContinue(c);   // Back inside Stremio returns here, not to Stremio's own home
-                return;
-            }
+            if (open(c, STREMIO, "stremio:///detail/" + (movie ? "movie" : "series") + "/" + p.imdb + "/" + video)) return;
         }
         // Not on any of the TV's services (or Stremio chosen): its page in Stremio.
         openInStremio(c, p.kind, p.id);
@@ -206,6 +203,7 @@ final class DeepLinks {
                 Intent i = c.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
                 if (i == null) i = c.getPackageManager().getLaunchIntentForPackage(pkg);
                 if (i != null) {
+                    TrailerReturn.cancel();   // another app on purpose: a trailer's return must not pull Home over it
                     c.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 } else {
                     openTitle(c, p.kind, p.id);
@@ -221,6 +219,7 @@ final class DeepLinks {
         if (pkg.equals("com.netflix.ninja")) i.putExtra("source", "30");   // Netflix for TV wants to know it's a deep link
         if (i.resolveActivity(c.getPackageManager()) == null) return false;
         try {
+            TrailerReturn.cancel();   // another app on purpose: a trailer's return must not pull Home over it
             c.startActivity(i);
             AppLog.w("deep link -> " + url);
             return true;

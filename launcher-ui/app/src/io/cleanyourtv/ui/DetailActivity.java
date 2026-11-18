@@ -476,6 +476,7 @@ public class DetailActivity extends Activity {
             return;
         }
         try {
+            TrailerReturn.cancel();   // another app on purpose: a trailer's return must not pull Home over it
             startActivity(i);
             Tmdb.setSeen(this, title, true);
         } catch (Exception e) {
@@ -645,6 +646,7 @@ public class DetailActivity extends Activity {
                 : new Intent(Intent.ACTION_VIEW, url).setPackage(pkg)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         try {
+            TrailerReturn.cancel();   // another app on purpose: a trailer's return must not pull Home over it
             startActivity(app);
         } catch (Exception e) {
             try {
