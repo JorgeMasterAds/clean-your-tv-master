@@ -404,7 +404,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // Frames
     private boolean running, tilesDirty, statusDirty, heroDirty, drawerDirty, gridDirty, motionDirty = true;
     /** On the hero: the focus is on the "Trailer" button under the title (↓ from the title, ↑ back). */
-    private boolean stremioFocus;   // on the "Stremio" button beside Trailer (OK there plays it in Stremio, not in the service's app)
     private boolean trailerFocus, gameTrailerFocus;   // gameTrailerFocus: on the games dock, up goes to the game's Trailer button
     private Paint trailerLabel;
     private boolean drawerWasMoving, idle;
@@ -597,7 +596,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         checkNight(false);
         resumedAt = SystemClock.uptimeMillis();
         introAt = resumedAt;
-        stremioInstalled = Providers.installed(getContext(), DeepLinks.STREMIO);
         intro = 0;
         lastNanos = 0;
         lastStep = 0;
@@ -2738,8 +2736,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             Recs.Pick p = cardIndex < cards.size() ? cards.get(cardIndex) : null;
             if (p == null) return;
             click.open();
-            if (trailerFocus && stremioFocus && hasStremioButton(p)) DeepLinks.openInStremio(getContext(), p.kind, p.id);
-            else if (trailerFocus && hasTrailerButton(p)) DeepLinks.openTrailer(getContext(), p);
+            if (trailerFocus && hasTrailerButton(p)) DeepLinks.openTrailer(getContext(), p);
             else DeepLinks.openPick(getContext(), p);
             return;
         } else {
@@ -3637,18 +3634,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (focused) {
             String mode = Prefs.openIn(), service = Recs.serviceName(p);
-            String hint = trailerFocus && stremioFocus && hasStremioButton(p) ? Ui.tr("OK para assistir no Stremio", "OK to watch in Stremio")
-                    : trailerFocus && hasTrailerButton(p) ? Ui.tr("OK para ver o trailer", "OK to watch the trailer")
+            String hint = trailerFocus && hasTrailerButton(p) ? Ui.tr("OK para ver o trailer", "OK to watch the trailer")
                     : p.cont ? "OK para continuar no Stremio" : p.trailer != null ? "OK para ver o trailer"
                     : "page".equals(mode) ? Ui.tr("OK para ver os detalhes", "OK for the details")
                     : "app".equals(mode) && !service.isEmpty() && !"Stremio".equals(service) ? Ui.tr("OK para assistir no ", "OK to watch on ") + service
                     : Ui.tr("OK para assistir no Stremio", "OK to watch in Stremio");
             c.drawText(hint, bx + 18 * k, by + bh / 2 + Ui.halfCap(heroHint), heroHint);
         }
-        if (hasTrailerButton(p)) {
-            float right = drawTrailerButton(c, x, 662 * k, focused && trailerFocus && !stremioFocus, Ui.tr("Trailer", "Trailer"));
-            if (hasStremioButton(p)) drawTrailerButton(c, right + 16 * k, 662 * k, focused && trailerFocus && stremioFocus, "Stremio");
-        }
+        if (hasTrailerButton(p)) drawTrailerButton(c, x, 662 * k, focused && trailerFocus);
     }
 
     private Paint heroSynopsis;
@@ -3697,7 +3690,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         String title = TextUtils.ellipsize(g.name, fitPaint, maxW, TextUtils.TruncateAt.END).toString();
         c.drawText(title, x - Ui.leftBearing(heroTitle, title), 470 * k, heroTitle);
         c.drawText(Games.about(g), x, 520 * k, heroMeta);
-        drawTrailerButton(c, x, 556 * k, gameTrailerFocus, Ui.tr("Trailer", "Trailer"));
+        drawTrailerButton(c, x, 556 * k, gameTrailerFocus);
         String hint = gameMoving ? Ui.tr("← → para mudar de lugar · OK para soltar", "← → to move · OK to drop")
                 : gameTrailerFocus ? Ui.tr("OK para ver o trailer", "OK to watch the trailer")
                 : Ui.tr("OK para jogar no PC · ↑ trailer", "OK to play on the PC · ↑ trailer");
@@ -3705,8 +3698,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     /** "▶ Trailer" under the title: white when focused, glass otherwise. */
-    private float drawTrailerButton(Canvas c, float x, float top, boolean on, String label) {
+    private void drawTrailerButton(Canvas c, float x, float top, boolean on) {
         if (trailerLabel == null) trailerLabel = Ui.text(Ui.semibold, 26 * k, 0xFFFFFFFF);
+        String label = Ui.tr("Trailer", "Trailer");
         float h = 54 * k, icon = 26 * k, w = 24 * k + icon + 12 * k + trailerLabel.measureText(label) + 28 * k;
         fill.setShader(null);
         fill.setColor(on ? 0xFFFFFFFF : 0x40FFFFFF);
@@ -3723,7 +3717,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         c.drawPath(tri, fill);
         trailerLabel.setColor(ink);
         c.drawText(label, x + 24 * k + icon + 12 * k, cy + Ui.halfCap(trailerLabel), trailerLabel);
-        return x + w;
     }
 
     private void drawClock(Canvas c) {
@@ -3863,31 +3856,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return p != null && p.trailer == null && p.id != 0 && p.kind != null;
     }
 
-    /** A second button, "Stremio", beside Trailer: the service's own app stays the main way (OK on the title). */
-    private boolean hasStremioButton(Recs.Pick p) {
-        return hasTrailerButton(p) && !p.cont && stremioInstalled && !"Stremio".equals(Recs.serviceName(p));
-    }
-
-    private boolean stremioInstalled;
-
     private boolean moveLight(int dx, int dy) {
-        if (zone != Z_CARDS) trailerFocus = stremioFocus = false;
-        if (zone == Z_CARDS && trailerFocus && dy == 0 && dx != 0) {   // → on Trailer: the Stremio button; ← back
-            int d = Ui.he ? -dx : dx;
-            if (d > 0 && !stremioFocus && hasStremioButton(heroPick())) {
-                stremioFocus = true;
-                heroDirty = true;
-                click.move();
-                return true;
-            }
-            if (d < 0 && stremioFocus) {
-                stremioFocus = false;
-                heroDirty = true;
-                click.move();
-                return true;
-            }
-            if (stremioFocus) return true;
-        }
+        if (zone != Z_CARDS) trailerFocus = false;
         if (zone == Z_CARDS && dx == 0 && dy != 0) {
             boolean button = hasTrailerButton(heroPick());
             if (dy > 0 && !trailerFocus && button) {   // ↓ from the title: its Trailer button
@@ -3898,13 +3868,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 return true;
             }
             if (dy < 0 && trailerFocus) {              // ↑ from the button: back to the title
-                trailerFocus = stremioFocus = false;
+                trailerFocus = false;
                 heroDirty = true;
                 retarget(false);
                 click.move();
                 return true;
             }
-            trailerFocus = stremioFocus = false;
+            trailerFocus = false;
         }
         switch (zone) {
             case Z_SHELF:
