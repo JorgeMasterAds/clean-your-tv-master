@@ -22,6 +22,18 @@ public class HomeActivity extends Activity {
         openFrom(getIntent());
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        if (home != null) home.restoreGpu();
+    }
+
+    @Override protected void onStop() {
+        if (home != null) home.releaseGpu();
+        Images.trim();
+        Recs.trimLoaded();
+        super.onStop();
+    }
+
     @Override protected void onResume() {
         super.onResume();
         TvConfig.apply(this);

@@ -558,6 +558,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // Not on Android 9 to 11: on older GPUs (a Mi Box 3's Mali-450) redrawing and compositing a big layer on every
         // frame cost more than drawing straight to the screen (measured: focus on the picks 33 → 12 ms a frame, the
         // drawer 19 → 17 ms).
+        gpuLayers = new View[] {sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer};
         for (View v : new View[] {heroLayer, status, platter, tiles, drawerLayer, sheetLayer}) v.setLayerType(Ui.LEGACY ? LAYER_TYPE_NONE : LAYER_TYPE_HARDWARE, null);
         // The background too: the photo and its three full-screen shades were drawn again on every frame of every
         // animation (eight full-screen passes during a fade), ~70 ms of GPU a frame on a TCL C6K. Cached, it is one
@@ -2416,6 +2417,23 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         super.onAttachedToWindow();
         removeCallbacks(autoNext);
         postDelayed(autoNext, 2000);
+    }
+
+    private View[] gpuLayers;
+
+    /**
+     * Another app is in front (Stremio, a streaming app): the layers' textures (~150 MB of the TV's shared memory) go.
+     * On a 2.6 GB TV that memory is what made the player freeze (ANR) when it moved to the next episode.
+     */
+    void releaseGpu() {
+        crispLogos.clear();
+        if (Ui.LEGACY || gpuLayers == null) return;
+        for (View v : gpuLayers) v.setLayerType(LAYER_TYPE_NONE, null);
+    }
+
+    void restoreGpu() {
+        if (Ui.LEGACY || gpuLayers == null) return;
+        for (View v : gpuLayers) v.setLayerType(LAYER_TYPE_HARDWARE, null);
     }
 
     // Back on Home (from an app, a details page, the screen saver): the hero waits its full time again, so the title
