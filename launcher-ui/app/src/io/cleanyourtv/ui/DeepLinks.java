@@ -169,10 +169,8 @@ final class DeepLinks {
             return;
         }
         if (!p.cont && "app".equals(mode)) {
-            // The service's own app, even when Settings › Services sends that service to Stremio.
-            String app = p.app == null ? null : Providers.officialApp(c, p.app);
-            if (app == null && p.pkg != null && !p.pkg.equals(STREMIO) && !p.pkg.equals(SMARTTUBE)) app = p.pkg;
-            if (app != null && Providers.installed(c, app)) {
+            String app = originalApp(c, p);
+            if (app != null) {
                 openInApp(c, p, app);
                 return;
             }
@@ -184,6 +182,19 @@ final class DeepLinks {
         }
         // Not on any of the TV's services (or Stremio chosen): its page in Stremio.
         openInStremio(c, p.kind, p.id);
+    }
+
+    /** The service's own app for a title, when the TV has it (even when Settings › Services sends that service to Stremio). */
+    static String originalApp(Context c, Recs.Pick p) {
+        String app = p.app == null ? null : Providers.officialApp(c, p.app);
+        if (app == null && p.pkg != null && !p.pkg.equals(STREMIO) && !p.pkg.equals(SMARTTUBE)) app = p.pkg;
+        return app != null && Providers.installed(c, app) ? app : null;
+    }
+
+    /** The "watch on the service" button beside Trailer: the title in the service's app. */
+    static void openOriginal(Context c, Recs.Pick p) {
+        String app = originalApp(c, p);
+        if (app != null) openInApp(c, p, app);
     }
 
     /** The title right in its streaming app (Wikidata's id for it), else the app's own home. */
