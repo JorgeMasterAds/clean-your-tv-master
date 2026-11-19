@@ -273,7 +273,8 @@ final class Prefs {
     static boolean tabCat() { return sp().getBoolean("tabCat", true); }
     static void setTabCat(boolean on) { put("tabCat", on); }
     /** "app" (the streaming service the title is on), "stremio" (its page in Stremio) or "page" (this app's own page). */
-    static String openIn() { return sp().getString("openIn", "app"); }
+    /** Not chosen yet: with a Stremio account linked, Stremio (OK says "assistir no Stremio"); else the service's app. */
+    static String openIn() { return sp().getString("openIn", stremioLinked() ? "stremio" : "app"); }
     static void setOpenIn(String v) { put("openIn", v); }
     /** Seconds between hero titles; 0 = it stays put. */
     static int heroEvery() { return sp().getInt("heroEvery", 15); }
