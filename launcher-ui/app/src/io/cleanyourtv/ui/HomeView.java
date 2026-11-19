@@ -3625,7 +3625,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawRoundRect(tmp, bh / 2, bh / 2, fill);
             bx += bw + 9 * k;
         }
-        if (focused) {
+        if (focused && !trailerFocus) {   // on the buttons beside the title the hint is not needed
             String mode = Prefs.openIn(), service = Recs.serviceName(p);
             String hint = trailerFocus && extraFocus == 1 && hasStremioButton(p) ? Ui.tr("OK para assistir no Stremio", "OK to watch in Stremio")
                     : trailerFocus && extraFocus == 2 && hasServiceButton(p) ? Ui.tr("OK para assistir no ", "OK to watch on ") + Recs.serviceName(p)
