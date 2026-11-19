@@ -259,9 +259,16 @@ final class Recs {
         return 0;
     }
     private static volatile String categoryId = "trailers";
+    static String categoryId() { return categoryId; }
     private final Map<String, List<Pick>> categoryPicks = new HashMap<>();
     private final Map<String, Long> categoryAt = new HashMap<>();
     private final java.util.Set<String> categoryLoading = new java.util.HashSet<>();
+    private final java.util.Set<String> categoryFailed = new java.util.HashSet<>();
+
+    /** The last try of this category failed (no connection to TMDB): Home says so instead of "loading" for ever. */
+    boolean categoryFailed(String id) {
+        synchronized (categoryPicks) { return categoryFailed.contains(id) && !categoryPicks.containsKey(id); }
+    }
 
     static String category() {
         return categoryId;
@@ -356,7 +363,7 @@ final class Recs {
                     String url = "/discover/" + kind + "?language=" + lang() + "&watch_region=" + region + "&include_adult=false&sort_by=popularity.desc"
                             + (q.contains("vote_count") ? "" : "&vote_count.gte=" + (kind.equals("movie") ? 150 : 60))
                             + (!Prefs.noKids() ? "&without_genres=10763,10764,10767" : anime ? "&without_genres=10751,10762" : "&without_genres=16,10751,10762,10763,10764,10767")
-                            + (trailers ? "" : kind.equals("movie") ? "&primary_release_date.gte=2015-01-01" : "&first_air_date.gte=2018-01-01")
+                            + (trailers || q.contains("release_date") || q.contains("air_date") ? "" : kind.equals("movie") ? "&primary_release_date.gte=2015-01-01" : "&first_air_date.gte=2018-01-01")   // a second date filter of the same name made TMDB answer 400 (Novidades)
                             + "&" + q.replace("|", "%7C");
                     JSONArray r = get(url).getJSONArray("results");
                     for (int i = 0; i < r.length(); i++) { found.add(r.getJSONObject(i)); kinds.add(kind); }
@@ -404,12 +411,17 @@ final class Recs {
             }
             synchronized (categoryPicks) {
                 categoryPicks.put(id, out);
+                categoryFailed.remove(id);
                 categoryAt.put(id, System.currentTimeMillis());
             }
             notifyListeners();
         } catch (Exception e) {
             AppLog.w("category " + id + ": " + e.getMessage());
-            synchronized (categoryPicks) { categoryAt.put(id, System.currentTimeMillis() - LIST_EVERY + 60_000L); }   // again in a minute
+            synchronized (categoryPicks) {
+                categoryFailed.add(id);
+                categoryAt.put(id, System.currentTimeMillis() - LIST_EVERY + 20_000L);   // again in 20 seconds
+            }
+            notifyListeners();
         } finally {
             synchronized (categoryPicks) { categoryLoading.remove(id); }
         }
