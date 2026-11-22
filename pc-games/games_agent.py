@@ -680,7 +680,6 @@ def private(addr):
 
 LAUNCHERS = ("\\battle.net\\", "\\riot client\\", "\\epic games\\launcher", "\\overwolf\\", "\\vortex",
              "\\steam.exe", "steamwebhelper", "\\ubisoft game launcher\\", "rockstar games launcher", "\\nswtl")
-WATCH = {"on": False}
 
 
 def game_running(cfg):
@@ -696,10 +695,15 @@ def game_running(cfg):
 RESTORE_LOCK = threading.Lock()
 
 
-def restore_screens():
+def restore_screens(gen=None):
+    """gen: the launch this restore belongs to. A watcher left over from an earlier game must not take the screens
+    away from a game opened since (it did: the TV showed "no signal" when Zelda was reopened right after closing)."""
     # Closing a game makes two watchers restore at nearly the same moment; interleaved, they could leave the screens
     # in a wrong layout. One at a time: the second finds nothing saved and does nothing.
     with RESTORE_LOCK:
+        if gen is not None and RUN.get("gen", 0) != gen:
+            log("restore skipped: a newer game was opened")
+            return
         try:
             import displays
             if displays.restore(SAVED):
@@ -715,15 +719,15 @@ def restore_screens():
             log("audio restore: %s" % e)
 
 
-def watch_game(cfg):
-    """Puts the screens back once the game has closed (or if it never started)."""
-    if WATCH["on"]:
-        return
-    WATCH["on"] = True
+def watch_game(cfg, gen=None):
+    """Puts the screens back once the game has closed (or if it never started); one watcher per launch, and it
+    stands down as soon as another game is opened."""
     try:
         start, seen, gone = time.time(), False, 0
         while True:
             time.sleep(10)
+            if gen is not None and RUN.get("gen", 0) != gen:
+                return
             if game_running(cfg):
                 seen, gone = True, 0
             elif seen:
@@ -732,9 +736,9 @@ def watch_game(cfg):
                     break
             elif time.time() - start > 240:
                 break
-        restore_screens()
-    finally:
-        WATCH["on"] = False
+        restore_screens(gen)
+    except Exception as e:
+        log("watch: %s" % e)
 
 
 def tv_sound(tv_monitor):
@@ -755,10 +759,10 @@ def tv_sound(tv_monitor):
         log("audio: %s" % e)
 
 
-RUN = {"state": "idle", "game": "", "error": "", "at": 0}
+RUN = {"state": "idle", "game": "", "error": "", "at": 0, "gen": 0}
 
 
-def check_start(g, cfg):
+def check_start(g, cfg, gen=None):
     """
     After a launch from the TV: the game must start (a process under the game folders) and show a full-screen window.
     If it doesn't, the PC's screens go back and the TV hears it (/api/status says "failed") and returns to its games.
@@ -783,18 +787,18 @@ def check_start(g, cfg):
                         front = displays.bring_to_front(game_pids(cfg) or pids)
                     RUN.update(state="playing")
                     log("start ok: %s%s" % (g["name"], "" if front else " (not in front)"))
-                    return watch_until_closed(g, cfg, t0)
+                    return watch_until_closed(g, cfg, t0, gen)
             except Exception as e:
                 log("fullscreen check: %s" % e)
         if seen is None and time.time() - t0 > start_wait:
-            return start_failed(g, "o jogo não abriu em 2 minutos. Abra o jogo uma vez direto no PC para ver se ele pede atualização ou login")
+            return start_failed(g, "o jogo não abriu em 2 minutos. Abra o jogo uma vez direto no PC para ver se ele pede atualização ou login", gen)
         if seen is not None and not pids and time.time() - seen > 5:
-            return start_failed(g, "o jogo fechou logo depois de abrir. Abra o jogo uma vez direto no PC para ver o que ele pede")
+            return start_failed(g, "o jogo fechou logo depois de abrir. Abra o jogo uma vez direto no PC para ver o que ele pede", gen)
         if seen is not None and time.time() - seen > show_wait:
-            return start_failed(g, "o jogo não ficou em tela cheia. No PC, ligue a tela cheia nas opções de vídeo do jogo")
+            return start_failed(g, "o jogo não ficou em tela cheia. No PC, ligue a tela cheia nas opções de vídeo do jogo", gen)
 
 
-def watch_until_closed(g, cfg, t0):
+def watch_until_closed(g, cfg, t0, gen=None):
     """The game is on: once it closes, the PC's screens go back and /api/status says "closed" (the TV goes Home)."""
     gone = 0
     while True:
@@ -804,20 +808,26 @@ def watch_until_closed(g, cfg, t0):
         gone = 0 if game_pids(cfg) else gone + 1
         if gone >= 2:
             break
+    if gen is not None and RUN.get("gen", 0) != gen:
+        return   # another game was opened meanwhile: it owns the screens now
     log("game closed: %s" % g["name"])
     RUN.update(state="closed")   # first: the TV leaves the PC's input and goes Home while the screens come back
     add_playtime(g, time.time() - t0 - 4)   # minus the last checks after it closed
-    restore_screens()
+    restore_screens(gen)
 
 
-def start_failed(g, why):
+def start_failed(g, why, gen=None):
+    if gen is not None and RUN.get("gen", 0) != gen:
+        return   # an older launch: a newer game owns the screens
     log("start failed: %s (%s)" % (g["name"], why))
     RUN.update(state="failed", error=why)
-    restore_screens()
+    restore_screens(gen)
 
 
 def launch(g, cfg, screen=""):
-    RUN.update(state="starting", game=g["name"], error="", at=time.time())
+    with RESTORE_LOCK:   # a restore already under way finishes first, then every older watcher stands down
+        gen = RUN.get("gen", 0) + 1
+        RUN.update(state="starting", game=g["name"], error="", at=time.time(), gen=gen)
     # The TV says which PC screen is its own (Settings › Tela do computador); else the PC's "tv_monitor".
     cfg = dict(cfg, tv_monitor="" if screen == "none" else screen or cfg.get("tv_monitor", ""))
     if cfg.get("tv_monitor"):
@@ -843,11 +853,11 @@ def launch(g, cfg, screen=""):
         os.startfile(g["launch"])
     except OSError as e:
         log("launch error: %s" % e)
-        start_failed(g, "o PC não achou o atalho do jogo. Ele pode ter sido desinstalado ou mudado de pasta")
+        start_failed(g, "o PC não achou o atalho do jogo. Ele pode ter sido desinstalado ou mudado de pasta", gen)
         raise
     if cfg.get("tv_monitor"):
-        threading.Thread(target=watch_game, args=(cfg,), daemon=True).start()
-    threading.Thread(target=check_start, args=(g, cfg), daemon=True).start()
+        threading.Thread(target=watch_game, args=(cfg, gen), daemon=True).start()
+    threading.Thread(target=check_start, args=(g, cfg, gen), daemon=True).start()
 
 
 # MARK: - Controller shortcut: hold View + Menu to close the game and put the screens back
@@ -1165,7 +1175,7 @@ def main():
         # In the background: it takes ~20 s, and the TV couldn't find the PC meanwhile.
         threading.Thread(target=restore_screens, daemon=True).start()
     elif os.path.exists(SAVED):
-        threading.Thread(target=watch_game, args=(cfg,), daemon=True).start()
+        threading.Thread(target=watch_game, args=(cfg, 0), daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", int(cfg["port"])), handler(cfg))
     log("listening on %s:%d" % (local_ip(), cfg["port"]))
     srv.serve_forever()
