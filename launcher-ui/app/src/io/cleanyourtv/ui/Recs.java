@@ -253,13 +253,37 @@ final class Recs {
             {"anime", "Anime", "with_genres=16&with_original_language=ja", "with_genres=16&with_original_language=ja"},
     };
 
-    /** Position of the current category in the list (0 when the saved one is gone). */
+    /**
+     * Which tab the category row sits under: null = Explore (movies and shows), "movie" = Movies, "tv" = Shows. The
+     * row then offers only the lists that have that type, and each list holds only that type.
+     */
+    private static volatile String categoryKind;
+    static void setCategoryKind(String kind) { categoryKind = kind; }
+    static String categoryKind() { return categoryKind; }
+
+    /** The categories for the current tab (Shows has no "Trailers novos": those are movies coming to cinemas). */
+    static String[][] categories() {
+        String kind = categoryKind;
+        if (!"tv".equals(kind)) return CATEGORIES;
+        List<String[]> out = new ArrayList<>();
+        for (String[] c : CATEGORIES) if (c[3] != null || (c[2] != null && c[2].startsWith("trending/"))) out.add(c);
+        return out.toArray(new String[0][]);
+    }
+
+    /** Position of the current category in the tab's list (0 when the saved one is not in it). */
     static int categoryIndex() {
-        for (int i = 0; i < CATEGORIES.length; i++) if (CATEGORIES[i][0].equals(categoryId)) return i;
+        String[][] all = categories();
+        for (int i = 0; i < all.length; i++) if (all[i][0].equals(categoryId)) return i;
         return 0;
     }
     private static volatile String categoryId = "trailers";
-    static String categoryId() { return categoryId; }
+    static String categoryId() { return category(); }
+
+    /** The cache key of a category for the current tab: "top10", "top10@movie", "top10@tv". */
+    private static String catKey(String id) {
+        String kind = categoryKind;
+        return kind == null ? id : id + "@" + kind;
+    }
     private final Map<String, List<Pick>> categoryPicks = new HashMap<>();
     private final Map<String, Long> categoryAt = new HashMap<>();
     private final java.util.Set<String> categoryLoading = new java.util.HashSet<>();
@@ -267,16 +291,17 @@ final class Recs {
 
     /** The last try of this category failed (no connection to TMDB): Home says so instead of "loading" for ever. */
     boolean categoryFailed(String id) {
-        synchronized (categoryPicks) { return categoryFailed.contains(id) && !categoryPicks.containsKey(id); }
+        String key = catKey(id);
+        synchronized (categoryPicks) { return categoryFailed.contains(key) && !categoryPicks.containsKey(key); }
     }
 
+    /** The category shown: the one picked, or the tab's first when the picked one has nothing of this type. */
     static String category() {
-        return categoryId;
+        return categories()[categoryIndex()][0];
     }
 
     static String categoryLabel() {
-        for (String[] c : CATEGORIES) if (c[0].equals(categoryId)) return c[1];
-        return CATEGORIES[0][1];
+        return categories()[categoryIndex()][1];
     }
 
     /** Settings that change what a category holds (titles per tab, kids): every list is fetched again. */
@@ -292,11 +317,12 @@ final class Recs {
 
     /** The category's 10 titles (empty while they load: the listeners hear when they are ready). */
     List<Pick> category(String id) {
+        String key = catKey(id), kind = categoryKind;
         synchronized (categoryPicks) {
-            List<Pick> have = categoryPicks.get(id);
-            Long at = categoryAt.get(id);
+            List<Pick> have = categoryPicks.get(key);
+            Long at = categoryAt.get(key);
             boolean stale = at == null || System.currentTimeMillis() - at > LIST_EVERY;
-            if (stale && categoryLoading.add(id)) catIo.execute(() -> fetchCategory(id));
+            if (stale && categoryLoading.add(key)) catIo.execute(() -> fetchCategory(id, kind, key));
             return have == null ? new ArrayList<>() : new ArrayList<>(have);
         }
     }
@@ -338,7 +364,8 @@ final class Recs {
         return get(c).trailerOf(p);
     }
 
-    private void fetchCategory(String id) {
+    /** Fetches one category's list; kind null = movies and shows, "movie" or "tv" = only that type. */
+    private void fetchCategory(String id, String only, String key) {
         String[] def = null;
         for (String[] c : CATEGORIES) if (c[0].equals(id)) def = c;
         try {
@@ -348,21 +375,25 @@ final class Recs {
             List<String> kinds = new ArrayList<>();
             String region = Tmdb.region();
             if (def[2] != null && def[2].startsWith("trending/")) {
-                JSONArray r = get("/" + def[2] + "?language=" + lang()).getJSONArray("results");
+                String path = only == null ? def[2] : def[2].replace("/all/", "/" + only + "/");
+                JSONArray r = get("/" + path + "?language=" + lang()).getJSONArray("results");
                 for (int i = 0; i < r.length(); i++) {
                     JSONObject o = r.getJSONObject(i);
                     String mt = o.optString("media_type");
-                    if (mt.equals("movie") || mt.equals("tv")) { found.add(o); kinds.add(mt); }
+                    if (mt.isEmpty() && only != null) mt = only;   // trending/movie and trending/tv may leave the type out
+                    if ((mt.equals("movie") || mt.equals("tv")) && (only == null || only.equals(mt))) { found.add(o); kinds.add(mt); }
                 }
             } else {
                 for (int t = 0; t < 2; t++) {
                     String q = def[2 + t];
-                    if (q == null) continue;
                     String kind = t == 0 ? "movie" : "tv";
+                    if (q == null || (only != null && !only.equals(kind))) continue;
                     q = q.replace("@-150", day(-150)).replace("@+0", day(0)).replace("@+120", day(120));
+                    String without = !Prefs.noKids() ? "10763,10764,10767" : anime ? "10751,10762" : "16,10751,10762,10763,10764,10767";
+                    for (int no : blockedIds(kind)) if (!(anime && no == 16)) without += "," + no;   // genres blocked in Settings (one parameter: two made TMDB answer 400)
                     String url = "/discover/" + kind + "?language=" + lang() + "&watch_region=" + region + "&include_adult=false&sort_by=popularity.desc"
                             + (q.contains("vote_count") ? "" : "&vote_count.gte=" + (kind.equals("movie") ? 150 : 60))
-                            + (!Prefs.noKids() ? "&without_genres=10763,10764,10767" : anime ? "&without_genres=10751,10762" : "&without_genres=16,10751,10762,10763,10764,10767")
+                            + "&without_genres=" + without
                             + (trailers || q.contains("release_date") || q.contains("air_date") ? "" : kind.equals("movie") ? "&primary_release_date.gte=2015-01-01" : "&first_air_date.gte=2018-01-01")   // a second date filter of the same name made TMDB answer 400 (Novidades)
                             + "&" + q.replace("|", "%7C");
                     JSONArray r = get(url).getJSONArray("results");
@@ -384,7 +415,7 @@ final class Recs {
                     int gi = g.optInt(j);
                     kids |= Prefs.noKids() && (gi == 10751 || gi == 10762 || (gi == 16 && !anime));
                 }
-                if (kids) continue;
+                if (kids || blocked(o, kinds.get(i))) continue;
                 List<Pick> one = new ArrayList<>();
                 add(one, o, kinds.get(i));
                 if (one.isEmpty() || !seen.add(key(one.get(0)))) continue;
@@ -410,20 +441,20 @@ final class Recs {
                 out.add(p);
             }
             synchronized (categoryPicks) {
-                categoryPicks.put(id, out);
-                categoryFailed.remove(id);
-                categoryAt.put(id, System.currentTimeMillis());
+                categoryPicks.put(key, out);
+                categoryFailed.remove(key);
+                categoryAt.put(key, System.currentTimeMillis());
             }
             notifyListeners();
         } catch (Exception e) {
             AppLog.w("category " + id + ": " + e.getMessage());
             synchronized (categoryPicks) {
-                categoryFailed.add(id);
-                categoryAt.put(id, System.currentTimeMillis() - LIST_EVERY + 20_000L);   // again in 20 seconds
+                categoryFailed.add(key);
+                categoryAt.put(key, System.currentTimeMillis() - LIST_EVERY + 20_000L);   // again in 20 seconds
             }
             notifyListeners();
         } finally {
-            synchronized (categoryPicks) { categoryLoading.remove(id); }
+            synchronized (categoryPicks) { categoryLoading.remove(key); }
         }
     }
 
@@ -746,6 +777,37 @@ final class Recs {
 
     // MARK: - TMDB
 
+    /** The genres that can be blocked in Settings (Anime, Doramas and Nacionais are not genres; Infantil has its own switch). */
+    static String[][] blockableGenres() {
+        List<String[]> out = new ArrayList<>();
+        for (String[] g : ExploreActivity.GENRES) {
+            if (g[5] != null || g[6] != null || g[0].equals("infantil")) continue;
+            if (g[3] != null || g[4] != null) out.add(g);
+        }
+        return out.toArray(new String[0][]);
+    }
+
+    /** TMDB genre ids blocked in Settings for movies ("movie") or shows ("tv"). */
+    static java.util.Set<Integer> blockedIds(String kind) {
+        java.util.Set<Integer> out = new java.util.HashSet<>();
+        String keys = "," + Prefs.blockedGenres() + ",";
+        if (keys.length() <= 2) return out;
+        for (String[] g : blockableGenres()) {
+            String id = "tv".equals(kind) ? g[4] : g[3];
+            if (id != null && keys.contains("," + g[0] + ",")) out.add(Integer.parseInt(id));
+        }
+        return out;
+    }
+
+    /** The title has a genre blocked in Settings. */
+    static boolean blocked(JSONObject o, String kind) {
+        java.util.Set<Integer> no = blockedIds(kind);
+        JSONArray g = o.optJSONArray("genre_ids");
+        if (no.isEmpty() || g == null) return false;
+        for (int i = 0; i < g.length(); i++) if (no.contains(g.optInt(i))) return true;
+        return false;
+    }
+
     /** Only what is worth showing: rated well by enough people, and not kids, family, news, reality or talk shows. */
     private static boolean good(JSONObject o, double minVote, int minCount) {
         if (o.optDouble("vote_average", 0) < minVote || o.optInt("vote_count", 0) < minCount) return false;
@@ -786,7 +848,7 @@ final class Recs {
             List<Pick> candidates = new ArrayList<>();
             for (int i = 0; i < hot.length() && candidates.size() < 20; i++) {
                 JSONObject o = hot.getJSONObject(i);
-                if (good(o, 6.8, 150)) add(candidates, o, kind);   // only well-rated, no kids/family/reality/talk
+                if (good(o, 6.8, 150) && !blocked(o, kind)) add(candidates, o, kind);   // only well-rated, no kids/family/reality/talk
             }
             for (Pick pick : candidates) {
                 try {
@@ -1031,6 +1093,7 @@ final class Recs {
         long stamp = Prefs.tmdbKey().hashCode() * 31L + Tmdb.region().hashCode();
         for (String[] service : SERVICES) stamp = stamp * 31L + (installed(service[2]) ? service[2].hashCode() : 0);
         stamp = stamp * 31L + Prefs.providersStamp();
+        stamp = stamp * 31L + Prefs.blockedGenres().hashCode();   // genres blocked in Settings: the list is fetched again
         return stamp;
     }
 

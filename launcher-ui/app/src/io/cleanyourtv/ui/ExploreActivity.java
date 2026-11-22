@@ -72,7 +72,7 @@ public class ExploreActivity extends Activity implements TitleMenu.Host {
      * Categories: key, Portuguese, English, movie genre, show genre, keyword, origin country, original language (to
      * filter search results, which TMDB doesn't filter).
      */
-    private static final String[][] GENRES = {
+    static final String[][] GENRES = {
         {"acao", "Ação", "Action", "28", "10759", null, null, null},
         {"aventura", "Aventura", "Adventure", "12", "10759", null, null, null},
         {"anime", "Anime", "Anime", "16", "16", "210024", null, "ja"},

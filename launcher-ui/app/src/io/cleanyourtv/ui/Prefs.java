@@ -285,6 +285,9 @@ final class Prefs {
     static void setGreetName(String v) { put("greetName", v == null ? "" : v.trim()); }
     static boolean noKids() { return sp().getBoolean("noKids", true); }
     static void setNoKids(boolean on) { put("noKids", on); }
+    /** Genres never suggested on Home (Settings › Gêneros bloqueados): keys of ExploreActivity.GENRES, comma-separated. */
+    static String blockedGenres() { return sp().getString("blockedGenres", ""); }
+    static void setBlockedGenres(String keys) { put("blockedGenres", keys == null ? "" : keys); }
 
     static String trailerPlayer() { return sp().getString("trailerPlayer", ""); }
     static void setTrailerPlayer(String pkg) { put("trailerPlayer", pkg == null ? "" : pkg); }

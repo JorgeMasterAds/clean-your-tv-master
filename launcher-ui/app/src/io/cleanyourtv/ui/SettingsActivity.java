@@ -442,6 +442,7 @@ public class SettingsActivity extends Activity {
                 {"Mostra os jogos do computador na aba Jogos e no dock, e abre o jogo pelo controle. No computador, abra o Jogos do PC (pasta pc-games); aqui, OK procura o computador na rede e você clica em Sim na tela dele. Com ele conectado, OK desconecta.", "Shows the computer's games in the Games tab and the dock, and opens them with the remote. Start PC Games on the computer (pc-games folder); here, OK finds it on the network and you click Yes on its screen. When connected, OK disconnects."},
                 {"A entrada HDMI onde o computador está ligado: a TV muda para ela quando o jogo abre. Em \"Nenhuma\" (projetor, TV sem entradas) a imagem do PC chega sozinha. As setas trocam.", "The HDMI input the computer is plugged into: the TV switches to it when a game opens. \"None\" (projector, TV without inputs): the PC's picture arrives by itself. The arrows change it."},
                 {"Qual tela do computador mostra o jogo aberto por esta TV: ela vira a única tela enquanto o jogo roda e tudo volta ao fechar. OK busca as telas do PC.", "Which of the computer's screens shows a game opened from this TV: it becomes the only screen while the game runs, and everything comes back when it closes. OK lists the PC's screens."},
+                {"Gêneros que a tela inicial nunca sugere, nas abas e nas categorias (terror, romance...). OK marca e desmarca. O Explorar e a busca continuam achando tudo.", "Genres Home never suggests, in its tabs and categories (horror, romance...). OK ticks and unticks them. Explore and search still find everything."},
         };
 
         /**
@@ -528,7 +529,7 @@ public class SettingsActivity extends Activity {
                     Ui.tr("Trocar o destaque a cada", "Next hero title every"), Ui.tr("Títulos por aba", "Titles per tab"),
                     Ui.tr("Infantil nas sugestões", "Kids titles in picks"), Ui.tr("Nome na saudação", "Name in the greeting"),
                     Ui.tr("Jogos do PC", "PC games"), Ui.tr("Entrada do computador", "Computer's input"),
-                    Ui.tr("Tela do computador", "Computer's screen")};
+                    Ui.tr("Tela do computador", "Computer's screen"), Ui.tr("Gêneros bloqueados", "Blocked genres")};
         }
 
         private static final String[] TRAILER_APPS = {"", DeepLinks.SMARTTUBE, "com.google.android.youtube.tv"};
@@ -551,7 +552,43 @@ public class SettingsActivity extends Activity {
                     Games.configured() ? (Prefs.gamesName().isEmpty() ? Ui.tr("Conectado", "Connected") : Prefs.gamesName())
                             : Ui.tr("Não conectado", "Not connected"),
                     Prefs.gamesInput().isEmpty() ? Ui.tr("Nenhuma", "None") : Prefs.gamesInput(),
-                    Prefs.gamesScreen().isEmpty() ? Ui.tr("Padrão do PC", "PC's default") : Prefs.getString("gamesScreenName", Prefs.gamesScreen())};
+                    Prefs.gamesScreen().isEmpty() ? Ui.tr("Padrão do PC", "PC's default") : Prefs.getString("gamesScreenName", Prefs.gamesScreen()),
+                    blockedSummary()};
+        }
+
+        /** "Nenhum", "Terror" or "Terror, Romance e mais 2". */
+        private String blockedSummary() {
+            List<String> names = new ArrayList<>();
+            String keys = "," + Prefs.blockedGenres() + ",";
+            for (String[] g : Recs.blockableGenres()) if (keys.contains("," + g[0] + ",")) names.add(Ui.tr(g[1], g[2]));
+            if (names.isEmpty()) return Ui.tr("Nenhum", "None");
+            if (names.size() <= 2) return android.text.TextUtils.join(", ", names);
+            return names.get(0) + ", " + names.get(1) + Ui.tr(" e mais ", " and ") + (names.size() - 2) + Ui.tr("", " more");
+        }
+
+        /** Settings › Gêneros bloqueados: tick the genres Home should never suggest (Explore and search still find them). */
+        private void pickBlockedGenres() {
+            String[][] all = Recs.blockableGenres();
+            String[] names = new String[all.length];
+            boolean[] on = new boolean[all.length];
+            String keys = "," + Prefs.blockedGenres() + ",";
+            for (int i = 0; i < all.length; i++) {
+                names[i] = Ui.tr(all[i][1], all[i][2]);
+                on[i] = keys.contains("," + all[i][0] + ",");
+            }
+            new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(Ui.tr("Não sugerir estes gêneros", "Never suggest these genres"))
+                    .setMultiChoiceItems(names, on, (d, which, checked) -> on[which] = checked)
+                    .setPositiveButton(Ui.tr("Salvar", "Save"), (d, w) -> {
+                        StringBuilder sb = new StringBuilder();
+                        for (int i = 0; i < all.length; i++) if (on[i]) sb.append(sb.length() == 0 ? "" : ",").append(all[i][0]);
+                        Prefs.setBlockedGenres(sb.toString());
+                        Recs.get(getContext()).clearCategories();
+                        HomeData.get(getContext()).settingsChanged();
+                        invalidate();
+                    })
+                    .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                    .show();
         }
 
         private static int next(int[] all, int now, int dir) {
@@ -1326,6 +1363,9 @@ public class SettingsActivity extends Activity {
                 return;
             } else if (screen == MASTER && focus == GREET_ROW + 3) {
                 pickPcScreen();
+                return;
+            } else if (screen == MASTER && focus == GREET_ROW + 4) {
+                pickBlockedGenres();
                 return;
             } else if (screen == MASTER && focus == GREET_ROW + 1) {
                 if (Games.configured()) {

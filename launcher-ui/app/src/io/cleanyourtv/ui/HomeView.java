@@ -130,6 +130,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return i != CAT_TAB && tabOn(i);
     }
 
+    /** The tab the category row belongs to now (Explore, Movies or Shows). */
+    private int kindTab() {
+        String kind = Recs.categoryKind();
+        return kind == null ? EXPLORE_TAB : kind.equals("tv") ? SHOWS_TAB : SHOWS_TAB - 1;
+    }
+
     private boolean chipsOn() {
         return picksOn() && Prefs.tabCat();
     }
@@ -141,17 +147,17 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Moves to the next (1) or previous (-1) category: past the end of a list, the row goes on to the next one. */
     private void nextCategory(int d) {
-        int n = Recs.CATEGORIES.length, at = Math.floorMod(Recs.categoryIndex() + d, n);
+        int n = Recs.categories().length, at = Math.floorMod(Recs.categoryIndex() + d, n);
         showCategory(at);
         cardIndex = d > 0 ? 0 : Math.max(0, cards.size() - 1);
     }
 
     private void showCategory(int at) {
-        recs.setCategory(Recs.CATEGORIES[at][0]);
+        recs.setCategory(Recs.categories()[at][0]);
         chipIndex = at;
         tab = -1;
         selectTab(CAT_TAB);
-        recs.category(Recs.CATEGORIES[(at + 1) % Recs.CATEGORIES.length][0]);   // the next list gets ready
+        recs.category(Recs.categories()[(at + 1) % Recs.categories().length][0]);   // the next list gets ready
         heroDirty = true;
     }
 
@@ -166,7 +172,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             chipTextOn = Ui.text(Ui.semibold, 27 * k, 0xFF111111);
             chipFill = new Paint(Paint.ANTI_ALIAS_FLAG);
         }
-        String[][] all = Recs.CATEGORIES;
+        String[][] all = Recs.categories();
         int at = Recs.categoryIndex();
         boolean focus = zone == Z_CHIPS && !sheetOpen, showing = tab == CAT_TAB;
         String name = all[at][1];
@@ -224,7 +230,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void moveCatMenu(int dx, int dy) {
-        int n = Recs.CATEGORIES.length, col = catMenuIndex % CAT_COLS, row = catMenuIndex / CAT_COLS;
+        int n = Recs.categories().length, col = catMenuIndex % CAT_COLS, row = catMenuIndex / CAT_COLS;
         int rows = (n + CAT_COLS - 1) / CAT_COLS;
         col = Math.max(0, Math.min(CAT_COLS - 1, col + (Ui.he ? -dx : dx)));
         row = Math.max(0, Math.min(rows - 1, row + dy));
@@ -246,7 +252,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** The quick menu: every list in a grid under the pill, the current one red, the focused one white. */
     private void drawCatMenu(Canvas c) {
         if (!catMenu || !chipsOn()) return;
-        String[][] all = Recs.CATEGORIES;
+        String[][] all = Recs.categories();
         int rows = (all.length + CAT_COLS - 1) / CAT_COLS, current = Recs.categoryIndex();
         float pw = (CAT_COLS * CAT_CELL_W + (CAT_COLS - 1) * CAT_GAP + 2 * CAT_PAD) * k;
         float ph = (rows * CAT_CELL_H + (rows - 1) * CAT_GAP + 2 * CAT_PAD) * k;
@@ -3425,6 +3431,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void selectTab(int index) {
         if (index == tab) return;
+        // The category row follows the tab above it: Explore has every list, Movies only movies, Shows only shows.
+        if (index >= EXPLORE_TAB && index <= SHOWS_TAB) Recs.setCategoryKind(index == EXPLORE_TAB ? null : index == SHOWS_TAB ? "tv" : "movie");
         tab = index;
         page = tabFirst[index];
         updateCards();
@@ -3969,7 +3977,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     chipIndex = Recs.categoryIndex();
                 } else if (dy < 0) {
                     zone = Z_TOP;
-                    topIndex = tab == CAT_TAB ? EXPLORE_TAB : tab;     // as on Apple TV: moving up to the tabs focuses the selected tab
+                    topIndex = tab == CAT_TAB ? kindTab() : tab;     // as on Apple TV: moving up to the tabs focuses the selected tab
                     updateCards();      // ready the other tabs' first pages
                 } else {
                     zone = Z_SHELF;
@@ -3979,11 +3987,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 break;
             case Z_CHIPS:
                 if (dx != 0) {
-                    showCategory(Math.floorMod(Recs.categoryIndex() + (Ui.he ? -dx : dx), Recs.CATEGORIES.length));
+                    showCategory(Math.floorMod(Recs.categoryIndex() + (Ui.he ? -dx : dx), Recs.categories().length));
                 } else if (dy < 0) {
                     zone = Z_TOP;
-                    topIndex = firstTab();   // always the leftmost tab
-                    if (topIndex != GAMES_TAB) selectTab(topIndex);
+                    topIndex = kindTab();   // back to the tab the row belongs to (Explore, Movies or Shows)
+                    selectTab(topIndex);
                 } else if (cards.isEmpty()) {
                     return true;    // the list is still loading: the focus waits on the pill
                 } else {
