@@ -762,6 +762,45 @@ def tv_sound(tv_monitor):
 RUN = {"state": "idle", "game": "", "error": "", "at": 0, "gen": 0}
 
 
+POPUPS = ("clickmonitorddc",)   # tools whose on-screen notice pops up when the screens switch, over the game
+
+
+def hide_popups(cfg):
+    """Hides the visible windows of tools that pop a notice over the game when the screens switch (ClickMonitorDDC
+    shows its brightness box). Only hidden, never closed: the tool keeps running and shows them again later."""
+    names = tuple(n.lower() for n in cfg.get("hide_popups", POPUPS))
+    if not names:
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.windll.user32
+        pids = set()
+        out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True,
+                             creationflags=0x08000000).stdout
+        for line in out.splitlines():
+            parts = [x.strip('"') for x in line.split('","')]
+            if len(parts) > 1 and parts[0].lower().startswith(names):
+                pids.add(int(parts[1]))
+        if not pids:
+            return
+        hidden = []
+
+        def each(h, _):
+            pid = wintypes.DWORD()
+            u.GetWindowThreadProcessId(h, ctypes.byref(pid))
+            if pid.value in pids and u.IsWindowVisible(h):
+                u.ShowWindow(h, 0)
+                hidden.append(h)
+            return True
+
+        u.EnumWindows(ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)(each), 0)
+        if hidden:
+            log("popups hidden: %d" % len(hidden))
+    except Exception as e:
+        log("popups: %s" % e)
+
+
 def check_start(g, cfg, gen=None):
     """
     After a launch from the TV: the game must start (a process under the game folders) and show a full-screen window.
@@ -780,10 +819,12 @@ def check_start(g, cfg, gen=None):
         if pids:
             try:
                 import displays
+                hide_popups(cfg)
                 front = displays.bring_to_front(pids)   # the game in front of everything, with the controller's focus
                 if displays.fullscreen_window(pids):
                     for _ in range(4):   # games often lose the focus while they load: put it back a few times
                         time.sleep(2)
+                        hide_popups(cfg)
                         front = displays.bring_to_front(game_pids(cfg) or pids)
                     RUN.update(state="playing")
                     log("start ok: %s%s" % (g["name"], "" if front else " (not in front)"))
