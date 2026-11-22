@@ -787,11 +787,11 @@ def check_start(g, cfg):
             except Exception as e:
                 log("fullscreen check: %s" % e)
         if seen is None and time.time() - t0 > start_wait:
-            return start_failed(g, "o jogo não abriu")
+            return start_failed(g, "o jogo não abriu em 2 minutos. Abra o jogo uma vez direto no PC para ver se ele pede atualização ou login")
         if seen is not None and not pids and time.time() - seen > 5:
-            return start_failed(g, "o jogo fechou logo depois de abrir")
+            return start_failed(g, "o jogo fechou logo depois de abrir. Abra o jogo uma vez direto no PC para ver o que ele pede")
         if seen is not None and time.time() - seen > show_wait:
-            return start_failed(g, "o jogo não ficou em tela cheia")
+            return start_failed(g, "o jogo não ficou em tela cheia. No PC, ligue a tela cheia nas opções de vídeo do jogo")
 
 
 def watch_until_closed(g, cfg, t0):
@@ -842,7 +842,8 @@ def launch(g, cfg, screen=""):
     try:
         os.startfile(g["launch"])
     except OSError as e:
-        start_failed(g, str(e))
+        log("launch error: %s" % e)
+        start_failed(g, "o PC não achou o atalho do jogo. Ele pode ter sido desinstalado ou mudado de pasta")
         raise
     if cfg.get("tv_monitor"):
         threading.Thread(target=watch_game, args=(cfg,), daemon=True).start()

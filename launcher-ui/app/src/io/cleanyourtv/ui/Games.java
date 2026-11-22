@@ -68,8 +68,7 @@ final class Games {
                 });
             } catch (Exception e) {
                 AppLog.w("games: " + e.getMessage());
-                MAIN.post(() -> Toast.makeText(a, Ui.tr("Não achei o PC. Ele está ligado, na mesma rede e com o Jogos do PC aberto?",
-                        "Couldn't reach the PC. Is it on, on the same network, with PC Games running?"), Toast.LENGTH_LONG).show());
+                MAIN.post(() -> Toast.makeText(a, explain(e), Toast.LENGTH_LONG).show());
             }
         }).start();
     }
@@ -115,7 +114,10 @@ final class Games {
                 c.setConnectTimeout(4000);
                 c.setReadTimeout(90_000);   // the person walks to the computer and clicks Yes
                 int code = c.getResponseCode();
-                if (code != 200) throw new IOException(code == 403 ? Ui.tr("o computador não permitiu", "the computer said no") : "HTTP " + code);
+                if (code == 403) throw new Problem(Ui.tr("O computador recusou a conexão. Tente de novo e clique em Sim na tela dele.",
+                        "The computer refused. Try again and click Yes on its screen."));
+                if (code != 200) throw new Problem(Ui.tr("O Jogos do PC deu erro (" + code + "). No computador, feche e abra o Jogos do PC e tente de novo.",
+                        "PC Games failed (" + code + "). On the computer, close and reopen PC Games, then try again."));
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 byte[] buf = new byte[4096];
                 int n;
@@ -137,7 +139,11 @@ final class Games {
                 });
             } catch (Exception e) {
                 AppLog.w("games pair: " + e.getMessage());
-                MAIN.post(() -> Toast.makeText(a, Ui.tr("Não conectou: ", "Didn't connect: ") + e.getMessage(), Toast.LENGTH_LONG).show());
+                String why = e instanceof Problem ? e.getMessage() : e instanceof java.net.SocketTimeoutException
+                        ? Ui.tr("Ninguém clicou em Sim no computador a tempo. Tente de novo.", "Nobody clicked Yes on the computer in time. Try again.")
+                        : Ui.tr("O computador parou de responder. Confira se o Jogos do PC está aberto nele e tente de novo.",
+                                "The computer stopped answering. Check that PC Games is running on it and try again.");
+                MAIN.post(() -> Toast.makeText(a, why, Toast.LENGTH_LONG).show());
             }
         }).start();
     }
@@ -303,7 +309,7 @@ final class Games {
                 watchStart(a);
             } catch (Exception e) {
                 AppLog.w("games launch: " + e.getMessage());
-                MAIN.post(() -> Toast.makeText(a, Ui.tr("O PC não abriu o jogo: ", "The PC didn't open the game: ") + e.getMessage(),
+                MAIN.post(() -> Toast.makeText(a, Ui.tr("Não deu para abrir " + name + ". ", "Couldn't open " + name + ". ") + explain(e),
                         Toast.LENGTH_LONG).show());
             }
         }).start();
@@ -342,7 +348,7 @@ final class Games {
                         } catch (RuntimeException e) {
                             AppLog.w("games back: " + e.getMessage());
                         }
-                        Toast.makeText(a, Ui.tr("Não deu para jogar: " + why + ". As telas do PC voltaram.",
+                        Toast.makeText(a, Ui.tr("Não deu para jogar: " + why + ". As telas do PC voltaram ao normal.",
                                 "Couldn't play: " + why + ". The PC's screens are back."), Toast.LENGTH_LONG).show();
                         MAIN.postDelayed(() -> open(a), 800);
                     });
@@ -384,8 +390,77 @@ final class Games {
                 "Game opened on the PC. No input named \"" + want + "\": switch HDMI with the remote."), Toast.LENGTH_LONG).show();
     }
 
+    /** An error already worded for the person: what went wrong and what to do about it. */
+    static final class Problem extends IOException {
+        Problem(String message) {
+            super(message);
+        }
+    }
+
+    /** The PC didn't take the connection at the saved address (off, asleep, agent closed, or a new address). */
+    private static final class Unreachable extends IOException {
+        Unreachable(IOException cause) {
+            super(cause.getMessage(), cause);
+        }
+    }
+
+    /** The person-facing words for any failure talking to the PC. */
+    static String explain(Exception e) {
+        if (e instanceof Problem) return e.getMessage();
+        return Ui.tr("Algo deu errado com o Jogos do PC. No computador, feche e abra o Jogos do PC e tente de novo.",
+                "Something went wrong with PC Games. On the computer, close and reopen PC Games, then try again.");
+    }
+
+    /**
+     * Asks the PC. Routers hand the PC a new address now and then: when the saved one doesn't answer, the TV looks
+     * for the PC on the network again and, if the same PC (same access code) answers there, keeps the new address.
+     */
     private static String request(String method, String path) throws IOException {
-        HttpURLConnection c = (HttpURLConnection) new URL(base() + path).openConnection();
+        try {
+            return send(Prefs.gamesHost(), method, path);
+        } catch (Unreachable e) {
+            String old = Prefs.gamesHost(), found = find();
+            if (found != null && !found.equals(old)) {
+                try {
+                    String body = send(found, method, path);
+                    Prefs.setGames(found, Prefs.gamesToken(), Prefs.gamesInput());
+                    AppLog.w("games: the PC moved to a new address");
+                    return body;
+                } catch (Unreachable ignored) {
+                    // fall through: the PC is not reachable at all
+                }
+            }
+            AppLog.w("games: " + e.getMessage());
+            throw new Problem(Ui.tr("O PC não respondeu. Confira se ele está ligado (sem estar em espera), na mesma rede da TV e com o Jogos do PC aberto.",
+                    "The PC didn't answer. Check that it's on (not asleep), on the TV's network, with PC Games running."));
+        }
+    }
+
+    /** The PC running pc-games on this network, "address:port", from a UDP broadcast; null when none answers. */
+    private static String find() {
+        try (java.net.DatagramSocket s = new java.net.DatagramSocket()) {
+            s.setBroadcast(true);
+            s.setSoTimeout(1200);
+            byte[] ask = "CYT-GAMES?".getBytes("UTF-8");
+            for (int round = 0; round < 3; round++) {
+                s.send(new java.net.DatagramPacket(ask, ask.length, java.net.InetAddress.getByName("255.255.255.255"), 48501));
+                try {
+                    byte[] buf = new byte[512];
+                    java.net.DatagramPacket in = new java.net.DatagramPacket(buf, buf.length);
+                    s.receive(in);
+                    JSONObject o = new JSONObject(new String(buf, 0, in.getLength(), "UTF-8"));
+                    return in.getAddress().getHostAddress() + ":" + o.optInt("port", 48500);
+                } catch (java.net.SocketTimeoutException ignored) {
+                }
+            }
+        } catch (Exception e) {
+            AppLog.w("games find: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static String send(String host, String method, String path) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL("http://" + host + path).openConnection();
         c.setRequestMethod(method);
         c.setConnectTimeout(4000);
         c.setReadTimeout(method.equals("POST") ? 15000 : 30000);
@@ -396,17 +471,34 @@ final class Games {
         int code;
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
+            try {
+                c.connect();
+            } catch (IOException e) {
+                throw new Unreachable(e);
+            }
             code = c.getResponseCode();
             try (InputStream in = code < 400 ? c.getInputStream() : c.getErrorStream()) {
                 byte[] buf = new byte[8192];
                 int n;
                 while (in != null && (n = in.read(buf)) > 0) out.write(buf, 0, n);
             }
+        } catch (java.net.SocketTimeoutException e) {
+            AppLog.w("games: " + e.getMessage());
+            throw new Problem(Ui.tr("O PC demorou demais para responder. Espere alguns segundos e tente de novo.",
+                    "The PC took too long to answer. Wait a few seconds and try again."));
         } finally {
             c.disconnect();
         }
         String body = out.toString("UTF-8");
-        if (code >= 400) throw new IOException(code == 403 ? Ui.tr("código de acesso errado", "wrong access code") : "HTTP " + code);
+        if (code == 403) throw new Problem(Ui.tr("Esta TV perdeu a permissão no PC. Vá em Configurações › Jogos do PC e conecte de novo.",
+                "This TV is no longer allowed on the PC. Go to Settings › PC games and connect again."));
+        if (code == 404 && path.startsWith("/api/launch")) throw new Problem(Ui.tr("O PC não achou esse jogo. Abra a lista de jogos de novo para atualizar.",
+                "The PC can't find that game. Open the games list again to refresh it."));
+        if (code >= 400) {
+            AppLog.w("games: HTTP " + code + " " + path.replaceAll("t=[^&]*", "t=…"));
+            throw new Problem(Ui.tr("O Jogos do PC deu erro (" + code + "). No computador, feche e abra o Jogos do PC e tente de novo.",
+                    "PC Games failed (" + code + "). On the computer, close and reopen PC Games, then try again."));
+        }
         return body;
     }
 
