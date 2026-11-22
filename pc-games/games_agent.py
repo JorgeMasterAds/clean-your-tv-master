@@ -801,6 +801,18 @@ def hide_popups(cfg):
         log("popups: %s" % e)
 
 
+def park_cursor():
+    """The mouse arrow sits in the middle of the TV over the game: it goes to the bottom-right corner, out of sight."""
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        # the virtual screen (all screens together; during a game the TV is the only one)
+        x, y, w, h = (u.GetSystemMetrics(i) for i in (76, 77, 78, 79))
+        u.SetCursorPos(x + w - 1, y + h - 1)
+    except Exception as e:
+        log("cursor: %s" % e)
+
+
 def check_start(g, cfg, gen=None):
     """
     After a launch from the TV: the game must start (a process under the game folders) and show a full-screen window.
@@ -826,6 +838,7 @@ def check_start(g, cfg, gen=None):
                         time.sleep(2)
                         hide_popups(cfg)
                         front = displays.bring_to_front(game_pids(cfg) or pids)
+                        park_cursor()
                     RUN.update(state="playing")
                     log("start ok: %s%s" % (g["name"], "" if front else " (not in front)"))
                     return watch_until_closed(g, cfg, t0, gen)
