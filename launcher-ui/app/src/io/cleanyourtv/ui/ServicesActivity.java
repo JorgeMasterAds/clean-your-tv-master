@@ -113,7 +113,7 @@ public class ServicesActivity extends Activity {
             labels.add(Providers.label(this, pkg));
         }
         String current = Prefs.trailerPlayer();
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        new RedAlert(this)
                 .setTitle(Ui.tr("Trailers de Filmes e Séries", "Movie & TV Trailers"))
                 .setSingleChoiceItems(labels.toArray(new String[0]), Math.max(0, values.indexOf(current)), (d, which) -> {
                     Prefs.setTrailerPlayer(values.get(which));
@@ -138,7 +138,7 @@ public class ServicesActivity extends Activity {
             labels.add(a[1]);
         }
         String current = Prefs.iptvPlayer();
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        new RedAlert(this)
                 .setTitle(Ui.tr("App de IPTV", "IPTV app"))
                 .setSingleChoiceItems(labels.toArray(new String[0]), Math.max(0, values.indexOf(current)), (d, which) -> {
                     Prefs.setIptvPlayer(values.get(which));
@@ -160,7 +160,7 @@ public class ServicesActivity extends Activity {
             labels.add(a[1]);
         }
         String current = Prefs.provider(String.valueOf(p.id));
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        new RedAlert(this)
                 .setTitle(p.name)
                 .setSingleChoiceItems(labels.toArray(new String[0]), Math.max(0, values.indexOf(current)), (d, which) -> {
                     Prefs.setProvider(String.valueOf(p.id), values.get(which));

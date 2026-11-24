@@ -149,7 +149,7 @@ public class SeasonActivity extends Activity {
         }
         String[] items = new String[10];
         for (int i = 0; i < 10; i++) items[i] = "★ " + (10 - i);
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        new RedAlert(this)
                 .setTitle(number + ". " + name)
                 .setItems(items, (d, which) -> new Thread(() -> {
                     try {

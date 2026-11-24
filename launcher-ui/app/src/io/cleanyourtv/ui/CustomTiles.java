@@ -137,7 +137,7 @@ final class CustomTiles {
         color.setText(now == null ? "" : now[1]);
         form.addView(url);
         form.addView(color);
-        new AlertDialog.Builder(a, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        new RedAlert(a)
                 .setTitle(Ui.tr("Logo e cor: ", "Logo and color: ") + label)
                 .setView(form)
                 .setPositiveButton(Ui.tr("Salvar", "Save"), (d, w) -> {

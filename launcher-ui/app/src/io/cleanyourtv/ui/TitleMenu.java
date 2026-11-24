@@ -91,7 +91,7 @@ final class TitleMenu {
         String[] items = new String[lists.size() + 1];
         for (int i = 0; i < lists.size(); i++) items[i] = lists.get(i)[1] + "  (" + lists.get(i)[2] + ")";
         items[lists.size()] = "+  " + Ui.tr("Nova lista…", "New list…");
-        new AlertDialog.Builder(a, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        new RedAlert(a)
                 .setTitle(Ui.tr("Adicionar a uma lista", "Add to a list"))
                 .setItems(items, (d, which) -> {
                     if (which < lists.size()) {
@@ -103,7 +103,7 @@ final class TitleMenu {
                     EditText field = new EditText(a);
                     field.setSingleLine(true);
                     field.setHint(Ui.tr("Nome da lista", "List name"));
-                    new AlertDialog.Builder(a, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    new RedAlert(a)
                             .setTitle(Ui.tr("Nova lista", "New list"))
                             .setView(field)
                             .setPositiveButton(Ui.tr("Criar", "Create"), (d2, w2) -> background(a, Ui.tr("Não deu para criar: ", "Couldn't create: "),

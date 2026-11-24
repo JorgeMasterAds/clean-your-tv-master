@@ -159,6 +159,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             AppLog.w("glass clock unavailable: " + e.getMessage());
             glassShader = null;
         }
+        glassShader = null;   // the see-through glass clock looked odd: a plain white clock with a soft shadow instead
         black.setColor(0xFF000000);
         shadowPaint.setColor(0xFF000000);
     }
@@ -242,7 +243,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         cornerDate = Ui.numbers(Ui.semibold, 30 * k, 0xEBFFFFFF);
         cornerQuote = Ui.numbers(Ui.regular, 23 * k, 0xC7FFFFFF);
         cornerStale = Ui.text(Ui.medium, 21 * k, 0x99FFFFFF);
-        cornerClock = Ui.numbers(Ui.displaySemibold, CLOCK_SIZE * k, 0xF2FFFFFF);
+        cornerClock = Ui.numbers(Ui.displayMedium, CLOCK_SIZE * k, 0xFFFFFFFF);
         labelPaint = Ui.text(Ui.medium, 25 * k, 0xB8FFFFFF);
         labelPaint.setLetterSpacing(0.1f);
         titlePaint = new TextPaint(Ui.text(Ui.displayMedium, 76 * k, 0xFFFFFFFF));

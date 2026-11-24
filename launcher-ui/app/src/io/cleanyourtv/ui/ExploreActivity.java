@@ -1623,7 +1623,7 @@ public class ExploreActivity extends Activity implements TitleMenu.Host {
         EditText name = new EditText(this);
         name.setSingleLine(true);
         name.setText(savedId != null ? label(savedId) : filter.label());
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        new RedAlert(this)
                 .setTitle(Ui.tr("Nome no menu", "Name in the menu"))
                 .setView(name)
                 .setPositiveButton(Ui.tr("Salvar", "Save"), (d, w) -> {

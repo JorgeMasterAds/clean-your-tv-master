@@ -120,6 +120,7 @@ final class Recs {
     private final java.util.Set<String> pending = new java.util.HashSet<>();
     private final java.util.Set<String> asked = new java.util.HashSet<>();   // details(): once per pick and list
     private volatile List<Pick> picks = new ArrayList<>();
+    private volatile boolean picksKids;   // `picks` was made for a kid profile
     private volatile int period = -1;
     private volatile long listAt;
     private volatile boolean fetching;
@@ -207,6 +208,7 @@ final class Recs {
         if (!hasKey(context)) return list;    // no TMDB key: no recommendations
         if ("cont".equals(kind)) return new ArrayList<>(continuing);   // the Continue tab: up to 5, from Stremio
         if ("cat".equals(kind)) return category(category());           // the category picked in the selector
+        if (picksKids != Prefs.kidsMode()) return list;   // the list on hand is the other profile's: never shown (a kid profile waits for its own)
         Map<String, Boolean> have = new HashMap<>();   // one look per app, not per title (this runs every 15 s)
         for (Pick p : picks) {
             if ((kind == null || kind.equals(p.kind))
@@ -264,9 +266,14 @@ final class Recs {
     /** The categories for the current tab (Shows has no "Trailers novos": those are movies coming to cinemas). */
     static String[][] categories() {
         String kind = categoryKind;
-        if (!"tv".equals(kind)) return CATEGORIES;
+        String hidden = "," + Prefs.hiddenCategories() + ",";
         List<String[]> out = new ArrayList<>();
-        for (String[] c : CATEGORIES) if (c[3] != null || (c[2] != null && c[2].startsWith("trending/"))) out.add(c);
+        for (String[] c : CATEGORIES) {
+            if ("tv".equals(kind) && c[3] == null && !(c[2] != null && c[2].startsWith("trending/"))) continue;
+            if (hidden.contains("," + c[0] + ",")) continue;   // turned off in Settings
+            out.add(c);
+        }
+        if (out.isEmpty()) out.add(CATEGORIES[1]);   // never an empty row: Top 10 stays
         return out.toArray(new String[0][]);
     }
 
@@ -313,6 +320,11 @@ final class Recs {
     void setCategory(String id) {
         categoryId = id;
         cache.edit().putString("category", id).apply();
+    }
+
+    private static boolean has16(JSONArray g) {
+        for (int i = 0; g != null && i < g.length(); i++) if (g.optInt(i) == 16) return true;
+        return false;
     }
 
     /** The category's 10 titles (empty while they load: the listeners hear when they are ready). */
@@ -416,6 +428,11 @@ final class Recs {
                     kids |= Prefs.noKids() && (gi == 10751 || gi == 10762 || (gi == 16 && !anime));
                 }
                 if (kids || blocked(o, kinds.get(i))) continue;
+                if (anime && !(o.optString("original_language").equals("ja") && has16(g))) continue;   // only real anime
+                if (!trailers) {   // not out yet: only "Trailers novos" shows those (a Top 10 title must be watchable)
+                    String when = o.optString("release_date", o.optString("first_air_date", ""));
+                    if (when.length() == 10 && when.compareTo(day(0)) > 0) continue;
+                }
                 List<Pick> one = new ArrayList<>();
                 add(one, o, kinds.get(i));
                 if (one.isEmpty() || !seen.add(key(one.get(0)))) continue;
@@ -838,6 +855,36 @@ final class Recs {
         for (int id : services.keySet()) ids.append(ids.length() == 0 ? "" : "|").append(id);
         String common = "&language=" + lang() + "&watch_region=" + Tmdb.region() + "&with_watch_monetization_types=flatrate&include_adult=false"
                 + "&sort_by=popularity.desc&with_watch_providers=" + URLEncoder.encode(ids.toString(), "UTF-8");
+        if (Prefs.kidsMode()) {   // kid profile: only kids, family and animation titles, from the TV's services
+            List<Pick> kidMovies = new ArrayList<>(), kidShows = new ArrayList<>();
+            for (String kind : new String[] {"movie", "tv"}) {
+                boolean movie = kind.equals("movie");
+                JSONArray r = get("/discover/" + kind + "?vote_count.gte=" + (movie ? 150 : 60) + "&with_genres=" + (movie ? "10751|16" : "10751|10762|16")
+                        + (movie ? "&certification_country=BR&certification.lte=10" : "") + common).getJSONArray("results");
+                List<Pick> candidates = new ArrayList<>();
+                for (int i = 0; i < r.length() && candidates.size() < 20; i++) add(candidates, r.getJSONObject(i), kind);
+                for (Pick pick : candidates) {
+                    try {
+                        fetchDetails(pick);
+                    } catch (Exception e) {
+                        continue;
+                    }
+                    if (pick.pkg != null) (movie ? kidMovies : kidShows).add(pick);
+                }
+            }
+            List<Pick> kids = new ArrayList<>();
+            alternate(kids, new java.util.HashSet<>(), kidMovies, kidShows, 24);
+            if (kids.isEmpty()) throw new IOException("TMDB returned no kids titles");
+            synchronized (asked) {
+                asked.clear();
+            }
+            picks = kids;
+            picksKids = true;
+            period = p;
+            listAt = System.currentTimeMillis();
+            listLanguage = Ui.language;
+            return;
+        }
         // 1. Trending this week (TMDB goes by what people are watching and searching for right now), only what is
         //    on one of the TV's services: the details say where (and are then ready).
         List<Pick> hotMovies = new ArrayList<>(), hotShows = new ArrayList<>();
@@ -885,6 +932,7 @@ final class Recs {
             asked.clear();
         }
         picks = list;
+        picksKids = false;
         period = p;
         listAt = System.currentTimeMillis();
         listLanguage = Ui.language;
@@ -1094,6 +1142,7 @@ final class Recs {
         for (String[] service : SERVICES) stamp = stamp * 31L + (installed(service[2]) ? service[2].hashCode() : 0);
         stamp = stamp * 31L + Prefs.providersStamp();
         stamp = stamp * 31L + Prefs.blockedGenres().hashCode();   // genres blocked in Settings: the list is fetched again
+        stamp = stamp * 31L + (Prefs.kidsMode() ? 7 : 0);          // a kid profile has its own list
         return stamp;
     }
 

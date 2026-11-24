@@ -87,7 +87,7 @@ final class Prefs {
      */
     static String screensaverStyle() {
         String v = sp().getString("screensaver", "photos");
-        return "aurora".equals(v) || "google".equals(v) ? v : "photos";
+        return "google".equals(v) || "clock".equals(v) || "mosaic".equals(v) ? v : "photos";
     }
 
     static final String GOOGLE_SCREENSAVER = "com.google.android.apps.tv.dreamx/.service.Backdrop";
@@ -285,8 +285,44 @@ final class Prefs {
     static void setGreetName(String v) { put("greetName", v == null ? "" : v.trim()); }
     static boolean noKids() { return sp().getBoolean("noKids", true); }
     static void setNoKids(boolean on) { put("noKids", on); }
+    /** Profiles: "" is the adult one; a kid profile's name otherwise (Home then shows only kids and family titles). */
+    static String profile() { return sp().getString("profile", ""); }
+    static void setProfile(String name) { put("profile", name == null ? "" : name); }
+    static boolean kidsMode() { return !profile().isEmpty(); }
+    /** The kid profiles' names, comma-separated, and the apps they may open (packages; empty = every app on the shelf). */
+    static String kidProfiles() { return sp().getString("kidProfiles", ""); }
+    static void setKidProfiles(String names) { put("kidProfiles", names == null ? "" : names); }
+    /** Avatar colors ("Maria=2,Joao=5": an index into RedAlert.PALETTE) and the PC games a kid profile may play (ids). */
+    static String kidColors() { return sp().getString("kidColors", ""); }
+    static void setKidColor(String name, int idx) {
+        StringBuilder sb = new StringBuilder();
+        for (String part : kidColors().split(",")) {
+            if (part.isEmpty() || part.startsWith(name + "=")) continue;
+            sb.append(sb.length() == 0 ? "" : ",").append(part);
+        }
+        sb.append(sb.length() == 0 ? "" : ",").append(name).append('=').append(idx);
+        put("kidColors", sb.toString());
+    }
+    /** Profile photos ("Arthur=/abc.jpg": a TMDB image path; "@adult" is the adult profile). */
+    static String avatars() { return sp().getString("avatars", ""); }
+    static void setAvatar(String name, String path) {
+        StringBuilder sb = new StringBuilder();
+        for (String part : avatars().split(",")) {
+            if (part.isEmpty() || part.startsWith(name + "=")) continue;
+            sb.append(sb.length() == 0 ? "" : ",").append(part);
+        }
+        if (path != null && !path.isEmpty()) sb.append(sb.length() == 0 ? "" : ",").append(name).append('=').append(path);
+        put("avatars", sb.toString());
+    }
+    static String kidGames() { return sp().getString("kidGames", ""); }
+    static void setKidGames(String ids) { put("kidGames", ids == null ? "" : ids); }
+    static String kidApps() { return sp().getString("kidApps", ""); }
+    static void setKidApps(String pkgs) { put("kidApps", pkgs == null ? "" : pkgs); }
     /** Genres never suggested on Home (Settings › Gêneros bloqueados): keys of ExploreActivity.GENRES, comma-separated. */
     static String blockedGenres() { return sp().getString("blockedGenres", ""); }
+    /** Categories hidden from the row under the tabs (Settings › Categorias): ids, comma-separated. */
+    static String hiddenCategories() { return sp().getString("hiddenCategories", ""); }
+    static void setHiddenCategories(String ids) { put("hiddenCategories", ids == null ? "" : ids); }
     static void setBlockedGenres(String keys) { put("blockedGenres", keys == null ? "" : keys); }
 
     static String trailerPlayer() { return sp().getString("trailerPlayer", ""); }

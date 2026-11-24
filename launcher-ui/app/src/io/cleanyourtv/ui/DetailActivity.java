@@ -374,7 +374,7 @@ public class DetailActivity extends Activity {
         box.addView(who);
         box.addView(body);
         TvUi.softFocus(box, k, 18 * k);
-        box.setOnClickListener(v -> new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        box.setOnClickListener(v -> new RedAlert(this)
                 .setTitle(r.optString("author")).setMessage(r.optString("content")).setPositiveButton("OK", null).show());
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Math.round(1500 * k), ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = Math.round(14 * k);
@@ -493,7 +493,7 @@ public class DetailActivity extends Activity {
     /** Never says the pick is wrong: a real IPTV player without search support looks the same to Android. */
     private void warnFallback(String pkg) {
         Prefs.setIptvFallbackWarnCount(Prefs.iptvFallbackWarnCount() + 1);
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        new RedAlert(this)
                 .setTitle(Providers.label(this, pkg))
                 .setMessage(Ui.tr("O app não respondeu à busca. Quer abrir assim mesmo, ou trocar o app em Ajustes › Serviços?",
                         "The app didn't answer the search. Open it anyway, or switch the app in Settings › Services?"))
@@ -607,7 +607,7 @@ public class DetailActivity extends Activity {
         String[] items = new String[myRating > 0 ? 11 : 10];
         for (int i = 0; i < 10; i++) items[i] = "★ " + (10 - i);
         if (myRating > 0) items[10] = Ui.tr("Remover minha nota", "Remove my rating");
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        new RedAlert(this)
                 .setTitle(Ui.tr("Sua nota para ", "Your rating for ") + title.name)
                 .setItems(items, (d, which) -> background(Ui.tr("Não deu para salvar a nota: ", "Couldn't save the rating: "), () -> {
                     if (which == 10) {

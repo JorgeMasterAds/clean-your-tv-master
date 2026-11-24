@@ -18,7 +18,10 @@ public class Screensaver extends DreamService {
 
     /** The view for the style picked in Settings; the preview in Settings uses it too. */
     static View make(Context c) {
-        return new DreamView(c, Prefs.screensaverStyle().equals("aurora"));
+        String style = Prefs.screensaverStyle();
+        if (style.equals("clock")) return new SaverViews.Clock(c);
+        if (style.equals("mosaic")) return new SaverViews.Mosaic(c);
+        return new DreamView(c, false);
     }
 
     private View view;
@@ -29,7 +32,12 @@ public class Screensaver extends DreamService {
         Ui.init(this);
         setInteractive(false);
         setFullscreen(true);
-        setScreenBright(true);
+        // Lower the backlight while the screensaver shows. It is asked through this window only, so Android gives the
+        // TV its own brightness back the moment the screensaver closes (no setting is changed).
+        setScreenBright(false);
+        android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.screenBrightness = 0.15f;
+        getWindow().setAttributes(lp);
         view = make(this);
         setContentView(view);
     }

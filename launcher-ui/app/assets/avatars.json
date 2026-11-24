@@ -1,0 +1,266 @@
+{
+"Pokémon": [
+[
+"Pikachu",
+"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png"
+],
+[
+"Charmander",
+"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/4.png"
+],
+[
+"Squirtle",
+"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/7.png"
+],
+[
+"Bulbasaur",
+"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1.png"
+],
+[
+"Eevee",
+"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/133.png"
+]
+],
+"Breaking Bad": [
+[
+"Walter White",
+"asset:avatars/breaking-bad-walter-white.jpg"
+],
+[
+"Jesse Pinkman",
+"asset:avatars/breaking-bad-jesse-pinkman.jpg"
+],
+[
+"Saul Goodman",
+"asset:avatars/breaking-bad-saul-goodman.jpg"
+],
+[
+"Skyler White",
+"asset:avatars/breaking-bad-skyler-white.jpg"
+],
+[
+"Gus Fring",
+"asset:avatars/breaking-bad-gus-fring.jpg"
+]
+],
+"Dragon Ball Z": [
+[
+"Gokuu Son",
+"https://s4.anilist.co/file/anilistcdn/character/large/246-wsRRr6z1kii8.png"
+],
+[
+"Vegeta",
+"https://s4.anilist.co/file/anilistcdn/character/large/b913-NIFkKazWM8VO.png"
+],
+[
+"Trunks",
+"https://s4.anilist.co/file/anilistcdn/character/large/b2707-YKWmn4q87oF8.png"
+],
+[
+"Gohan Son",
+"https://s4.anilist.co/file/anilistcdn/character/large/b2093-kdFZhqcNSsqW.png"
+],
+[
+"Piccolo",
+"https://s4.anilist.co/file/anilistcdn/character/large/b914-KuS8AWjqBrqa.jpg"
+]
+],
+"Big Bang: A Teoria": [
+[
+"Sheldon",
+"asset:avatars/big-bang-a-teoria-sheldon.jpg"
+],
+[
+"Leonard",
+"asset:avatars/big-bang-a-teoria-leonard.jpg"
+],
+[
+"Penny",
+"asset:avatars/big-bang-a-teoria-penny.jpg"
+],
+[
+"Howard",
+"asset:avatars/big-bang-a-teoria-howard.jpg"
+],
+[
+"Raj",
+"asset:avatars/big-bang-a-teoria-raj.jpg"
+]
+],
+"Game of Thrones": [
+[
+"Jon Snow",
+"asset:avatars/game-of-thrones-jon-snow.jpg"
+],
+[
+"Daenerys",
+"asset:avatars/game-of-thrones-daenerys.jpg"
+],
+[
+"Tyrion",
+"asset:avatars/game-of-thrones-tyrion.jpg"
+],
+[
+"Cersei",
+"asset:avatars/game-of-thrones-cersei.jpg"
+],
+[
+"Sansa",
+"asset:avatars/game-of-thrones-sansa.jpg"
+]
+],
+"Vingadores": [
+[
+"Homem de Ferro",
+"asset:avatars/vingadores-homem-de-ferro.jpg"
+],
+[
+"Capitão América",
+"asset:avatars/vingadores-capit-o-am-rica.jpg"
+],
+[
+"Thor",
+"asset:avatars/vingadores-thor.jpg"
+],
+[
+"Hulk",
+"asset:avatars/vingadores-hulk.jpg"
+],
+[
+"Viúva Negra",
+"asset:avatars/vingadores-vi-va-negra.jpg"
+]
+],
+"Universo DC": [
+[
+"Batman",
+"asset:avatars/universo-dc-batman.jpg"
+],
+[
+"Superman",
+"asset:avatars/universo-dc-superman.jpg"
+],
+[
+"Mulher-Maravilha",
+"asset:avatars/universo-dc-mulher-maravilha.jpg"
+],
+[
+"Coringa",
+"asset:avatars/universo-dc-coringa.png"
+],
+[
+"Arlequina",
+"asset:avatars/universo-dc-arlequina.jpg"
+]
+],
+"Naruto": [
+[
+"Itachi Uchiha",
+"https://s4.anilist.co/file/anilistcdn/character/large/b14-9Kb1E5oel1ke.png"
+],
+[
+"Kakashi Hatake",
+"https://s4.anilist.co/file/anilistcdn/character/large/b85-mkVBh2yjxjmx.png"
+],
+[
+"Naruto Uzumaki",
+"https://s4.anilist.co/file/anilistcdn/character/large/b17-phjcWCkRuIhu.png"
+],
+[
+"Sasuke Uchiha",
+"https://s4.anilist.co/file/anilistcdn/character/large/b13-SISLEw1oAD7a.png"
+],
+[
+"Shikamaru Nara",
+"https://s4.anilist.co/file/anilistcdn/character/large/b2007-QaesJlIZDifj.jpg"
+]
+],
+"One Piece": [
+[
+"Luffy D. Monkey",
+"https://s4.anilist.co/file/anilistcdn/character/large/b40-MNypXsxSRb1R.png"
+],
+[
+"Zoro Roronoa",
+"https://s4.anilist.co/file/anilistcdn/character/large/b62-S7oAeA9WInjV.png"
+],
+[
+"Sanji",
+"https://s4.anilist.co/file/anilistcdn/character/large/b305-6lisPmHtCnLT.png"
+],
+[
+"Robin Nico",
+"https://s4.anilist.co/file/anilistcdn/character/large/b61-ywXUyyocEEqt.png"
+],
+[
+"Law Trafalgar",
+"https://s4.anilist.co/file/anilistcdn/character/large/b13767-U604OJN9dxCn.jpg"
+]
+],
+"Death Note": [
+[
+"Light Yagami",
+"asset:avatars/death-note-light-yagami.jpg"
+],
+[
+"L",
+"asset:avatars/death-note-l.jpg"
+],
+[
+"Misa Amane",
+"asset:avatars/death-note-misa-amane.jpg"
+],
+[
+"Ryuk",
+"asset:avatars/death-note-ryuk.jpg"
+],
+[
+"Near",
+"asset:avatars/death-note-near.jpg"
+]
+],
+"Bleach": [
+[
+"Ichigo",
+"asset:avatars/bleach-ichigo.jpg"
+],
+[
+"Rukia",
+"asset:avatars/bleach-rukia.jpg"
+],
+[
+"Orihime",
+"asset:avatars/bleach-orihime.jpg"
+],
+[
+"Uryū",
+"asset:avatars/bleach-ury.jpg"
+],
+[
+"Byakuya",
+"asset:avatars/bleach-byakuya.jpg"
+]
+],
+"Ursos Sem Curso": [
+[
+"Grizz",
+"asset:avatars/ursos-sem-curso-grizz.png"
+],
+[
+"Panda",
+"asset:avatars/ursos-sem-curso-panda.png"
+],
+[
+"Ice Bear",
+"asset:avatars/ursos-sem-curso-ice-bear.png"
+],
+[
+"Chloe",
+"asset:avatars/ursos-sem-curso-chloe.png"
+],
+[
+"Nom Nom",
+"asset:avatars/ursos-sem-curso-nom-nom.png"
+]
+]
+}

@@ -125,7 +125,7 @@ public class SettingsActivity extends Activity {
         private final SettingsActivity activity;
         private final Scene scene = new Scene();
         private final Handler handler = new Handler(Looper.getMainLooper());
-        private final Spring[] pop = new Spring[12];
+        private final Spring[] pop = new Spring[24];
         private final List<String> appPkgs = new ArrayList<>(), appLabels = new ArrayList<>();
         // The list picker (the app of a remote button): what it shows, which one is in use, where we are.
         private final List<String> pickLabels = new ArrayList<>();
@@ -137,6 +137,7 @@ public class SettingsActivity extends Activity {
         private final List<String[]> cities = new ArrayList<>();
         private String cityStatus = "";
         private final RectF tmp = new RectF(), rowRect = new RectF(), focusBox = new RectF();
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private JSONObject recs = new JSONObject();
         private boolean hasKey;
         private int screen = MAIN, focus;
@@ -162,6 +163,7 @@ public class SettingsActivity extends Activity {
             super(a);
             activity = a;
             for (int i = 0; i < pop.length; i++) pop[i] = new Spring(0.28f, 0.85f, 0);
+            Avatars.prefetch(a);   // the profile photos download while the settings are open
             HomeData.Weather wx = HomeData.get(a).weather;
             Shaders.sky(scene.palette, System.currentTimeMillis(), wx.sunrise, wx.sunset);
             scene.setMotion(0.5f, 0.2f);
@@ -195,11 +197,7 @@ public class SettingsActivity extends Activity {
             switch (screen) {
                 case MAIN: {
                     String[] names = {Ui.tr("Protetor de tela, ver agora", "Screensaver, preview") + ", " + styleName(Prefs.screensaverStyle()),
-                            Ui.tr("Aparência e clima", "Home Settings"),
-                            Ui.tr("Apps do dock", "Shelf"), Ui.tr("Atalhos do controle", "Remote Buttons"), Ui.tr("Meus streamings", "Services"),
-                            Ui.tr("Conta TMDB, ", "TMDB account, ") + account(), Ui.tr("Conta Stremio, ", "Stremio account, ") + stremioState(),
-                            Ui.tr("Categoria inicial, ", "Home category, ") + Recs.categoryLabel(), Ui.tr("Abas e reprodução", "Tabs and Stremio"),
-                            Ui.tr("Configurações do Android", "TV Settings")};
+                            mainLabels()[1], mainLabels()[2], mainLabels()[3], mainLabels()[4], mainLabels()[5], mainLabels()[6]};
                     return row < names.length ? names[row] : "";
                 }
                 case MASTER:
@@ -231,13 +229,23 @@ public class SettingsActivity extends Activity {
             }
         }
 
+        /** The lists with more rows than fit the screen scroll: the first row shown keeps the focused one in view. */
+        private static final int LIST_VISIBLE = 11;
+
+        private int firstRow() {
+            if (screen != MASTER && screen != HOME_SETTINGS) return 0;
+            int total = settingLabels().length;
+            if (total <= LIST_VISIBLE) return 0;
+            return Math.max(0, Math.min(focus - LIST_VISIBLE + 1, total - LIST_VISIBLE));
+        }
+
         private RectF rowBox(int row) {
             float top, height;
             if (screen == MAIN) {
                 top = LIST_TOP + row * (ROW_H + ROW_GAP);
                 height = ROW_H;
             } else {
-                top = LIST_TOP + 20 + row * (LIST_ROW_H + LIST_ROW_GAP);
+                top = LIST_TOP + 20 + (row - firstRow()) * (LIST_ROW_H + LIST_ROW_GAP);
                 height = LIST_ROW_H;
             }
             focusBox.set(LIST_X * k, top * k, LIST_R * k, (top + height) * k);
@@ -302,7 +310,7 @@ public class SettingsActivity extends Activity {
 
         private int rowCount() {
             switch (screen) {
-                case MAIN: return 10;
+                case MAIN: return MAIN_LABELS_COUNT;
                 case MASTER:
                 case HOME_SETTINGS: return settingLabels().length;
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
@@ -337,11 +345,7 @@ public class SettingsActivity extends Activity {
         }
 
         private void drawMain(Canvas c) {
-            String[] labels = {Ui.tr("Protetor de tela", "Screensaver"), Ui.tr("Aparência e clima", "Home Settings"),
-                    Ui.tr("Apps do dock", "Shelf"), Ui.tr("Atalhos do controle", "Remote Buttons"), Ui.tr("Meus streamings", "Services"),
-                    Ui.tr("Conta TMDB", "TMDB account"), Ui.tr("Conta Stremio", "Stremio account"),
-                    Ui.tr("Categoria inicial", "Home category"), Ui.tr("Abas e reprodução", "Tabs and Stremio"),
-                    Ui.tr("Configurações do Android", "TV Settings")};
+            String[] labels = mainLabels();
             for (int i = 0; i < labels.length; i++) {
                 float y = (LIST_TOP + i * (ROW_H + ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
@@ -351,12 +355,11 @@ public class SettingsActivity extends Activity {
                 Symbols.draw(getContext(), c, MAIN_ICONS[i], rowRect.left + 44 * k, rowRect.centerY(), 30 * k, blend(0xFFFF4D5E, 0xFFFFFFFF, f));
                 c.drawText(labels[i], rowRect.left + 84 * k, base, rowLabel);
                 float right = rowRect.right - 30 * k;
-                if (i == 0 || i == 5 || i == 6 || i == 7) {
+                if (i == 0) {
                     rowValue.setColor(blend(0x8CFFFFFF, 0xD9FFFFFF, f));
                     // The screensaver's style: ← → change it (shown while focused), OK shows it.
                     String style = styleName(Prefs.screensaverStyle());
-                    String value = i == 5 ? account() : i == 6 ? stremioState() : i == 7 ? Recs.categoryLabel()
-                            : f > 0.5f ? "‹  " + style + "  ›" : style;
+                    String value = f > 0.5f ? "‹  " + style + "  ›" : style;
                     c.drawText(value, right, base, rowValue);
                 } else {
                     float cw = Symbols.width(getContext(), "chevron_right", 22 * k);
@@ -371,8 +374,31 @@ public class SettingsActivity extends Activity {
         private TextPaint panelText;
         private android.graphics.RadialGradient[] glows;
         private final android.graphics.Matrix glowMatrix = new android.graphics.Matrix();
-        private static final String[] MAIN_ICONS = {"bedtime", "home", "apps", "tune", "live_tv", "cloud", "sync", "search", "play", "tv_settings"};
+        private static final String[] MAIN_ICONS = {"bedtime", "cloud", "home", "play", "apps", "tune", "tv_settings"};
+        private static final int MAIN_LABELS_COUNT = 7;
         private static final int GREET_ROW = 7;
+        // The settings are grouped: the main list opens one of these lists. A row is an index of masterLabels() (0-16) or one
+        // of the entries after it (a row that used to live on the main list).
+        private static final int V_TMDB = 17, V_STREMIO = 18, V_SERVICES = 19, V_HOME = 20, V_DOCK = 21, V_CATEGORY = 22;
+        private static final int[][] GROUPS = {{V_TMDB, V_STREMIO, V_SERVICES}, {V_CATEGORY, V_HOME, V_DOCK, 7, 11, 12, 6}, {8, 9, 10}, {13, 14, 15, 16}};
+        private static final String[] VIRTUAL_ICONS = {"cloud", "sync", "live_tv", "home", "apps", "search"};
+        private int group;   // which of GROUPS the list on screen is
+
+        private String[] mainLabels() {
+            return new String[] {Ui.tr("Protetor de tela", "Screensaver"), Ui.tr("Contas", "Accounts"), Ui.tr("Tela inicial", "Home screen"),
+                    Ui.tr("Jogos do PC", "PC games"), Ui.tr("Perfis e crianças", "Profiles and kids"),
+                    Ui.tr("Atalhos do controle", "Remote Buttons"), Ui.tr("Configurações do Android", "TV Settings")};
+        }
+
+        /** The row's number in masterLabels() (the list on screen is one of the groups). */
+        private int mi() {
+            return screen == MASTER ? GROUPS[group][Math.min(focus, GROUPS[group].length - 1)] : focus;
+        }
+
+        private int positionIn(int g, int index) {
+            for (int i = 0; i < GROUPS[g].length; i++) if (GROUPS[g][i] == index) return i;
+            return 0;
+        }
 
         /** Black with slow red lights drifting behind everything (about one full turn a minute). */
         private void drawMasterBackground(Canvas c, float t) {
@@ -418,6 +444,19 @@ public class SettingsActivity extends Activity {
         private String[] mainInfo(int i) {
             switch (i) {
                 case 0: return new String[] {Ui.tr("Protetor de tela", "Screensaver"), Ui.tr("O que aparece quando a TV fica parada. As setas trocam o estilo, OK mostra agora.", "What shows when the TV sits idle. The arrows change the style, OK shows it now."), styleName(Prefs.screensaverStyle())};
+                case 1: return new String[] {Ui.tr("Contas", "Accounts"), Ui.tr("TMDB (fotos, sugestões e trailers), Stremio (a aba Continuar) e os streamings que você assina.", "TMDB (photos, picks and trailers), Stremio (the Continue tab) and the streaming services you pay for."), ""};
+                case 2: return new String[] {Ui.tr("Tela inicial", "Home screen"), Ui.tr("Categoria inicial, idioma e clima, apps do dock, nome na saudação e os gêneros e categorias que aparecem.", "Home category, language and weather, shelf apps, the name in the greeting and the genres and categories shown."), ""};
+                case 3: return new String[] {Ui.tr("Jogos do PC", "PC games"), Ui.tr("Liga a TV aos jogos do computador: conectar, entrada HDMI e a tela do PC.", "Connects the TV to the computer's games: pairing, HDMI input and the PC's screen."), ""};
+                case 4: return new String[] {Ui.tr("Perfis e crianças", "Profiles and kids"), Ui.tr("Perfis infantis, o que cada criança pode abrir e a foto de cada perfil.", "Kids profiles, what each child can open and each profile's photo."), kidProfilesSummary()};
+                case 5: return new String[] {Ui.tr("Atalhos do controle", "Remote Buttons"), Ui.tr("Troque o que cada botão do controle abre: um app, uma entrada HDMI ou uma função. Vale de dentro de qualquer app.", "Change what each remote button opens: an app, an HDMI input or a function, from inside any app."), RemoteKeys.remoteName(getContext())};
+                default: return new String[] {Ui.tr("Configurações do Android", "TV Settings"), Ui.tr("As configurações do Android TV: rede, som, imagem e apps.", "Android TV's own settings: network, sound, picture and apps."), ""};
+            }
+        }
+
+        /** What the rows that used to be on the main list say about themselves (the old numbering). */
+        private String[] legacyInfo(int i) {
+            switch (i) {
+                case 0: return new String[] {Ui.tr("Protetor de tela", "Screensaver"), Ui.tr("O que aparece quando a TV fica parada. As setas trocam o estilo, OK mostra agora.", "What shows when the TV sits idle. The arrows change the style, OK shows it now."), styleName(Prefs.screensaverStyle())};
                 case 1: return new String[] {Ui.tr("Aparência e clima", "Home Settings"), Ui.tr("Idioma, temperatura, relógio, clima e cidade.", "Language, temperature, clock, weather and city."), ""};
                 case 2: return new String[] {Ui.tr("Apps do dock", "Shelf"), Ui.tr("Quais apps aparecem na fileira da Início e em que ordem.", "Which apps sit on the Home row, and in what order."), ""};
                 case 3: return new String[] {Ui.tr("Atalhos do controle", "Remote Buttons"), Ui.tr("Troque o que cada botão do controle abre: um app, uma entrada HDMI ou uma função. Vale de dentro de qualquer app.", "Change what each remote button opens: an app, an HDMI input or a function, from inside any app."), RemoteKeys.remoteName(getContext())};
@@ -443,6 +482,11 @@ public class SettingsActivity extends Activity {
                 {"A entrada HDMI onde o computador está ligado: a TV muda para ela quando o jogo abre. Em \"Nenhuma\" (projetor, TV sem entradas) a imagem do PC chega sozinha. As setas trocam.", "The HDMI input the computer is plugged into: the TV switches to it when a game opens. \"None\" (projector, TV without inputs): the PC's picture arrives by itself. The arrows change it."},
                 {"Qual tela do computador mostra o jogo aberto por esta TV: ela vira a única tela enquanto o jogo roda e tudo volta ao fechar. OK busca as telas do PC.", "Which of the computer's screens shows a game opened from this TV: it becomes the only screen while the game runs, and everything comes back when it closes. OK lists the PC's screens."},
                 {"Gêneros que a tela inicial nunca sugere, nas abas e nas categorias (terror, romance...). OK marca e desmarca. O Explorar e a busca continuam achando tudo.", "Genres Home never suggests, in its tabs and categories (horror, romance...). OK ticks and unticks them. Explore and search still find everything."},
+                {"Quais listas aparecem na fileira abaixo das abas (Top 10, Netflix, Nota 8+, Marvel, Anime...). OK marca e desmarca. Pelo menos uma fica ligada.", "Which lists the row under the tabs offers (Top 10, Netflix, Top rated, Marvel, Anime...). OK ticks and unticks them. At least one stays on."},
+                {"Perfis para as crianças: na tela inicial, o botão de pessoa troca o perfil. O perfil infantil mostra só filmes e séries infantis e os jogos que você marcar, sem Continuar, Entradas nem Configurações. OK abre a lista: um nome apaga, \"Novo\" cria.", "Profiles for the kids: on Home, the person button switches the profile. A kids profile shows only kids movies and shows, with no Continue, Games, Inputs or Settings. OK opens the list: a name deletes it, \"New\" creates one."},
+                {"Quais apps o perfil infantil pode abrir. Sem nenhum marcado, ele abre todos os da prateleira (menos Todos os Apps).", "Which apps a kids profile can open. With none ticked, it opens every app on the shelf (except All apps)."},
+                {"Quais jogos do computador o perfil infantil pode jogar. Sem nenhum marcado, a aba Jogos fica vazia para ele.", "Which of the computer's games a kids profile can play. With none ticked, its Games tab stays empty."},
+                {"A foto de cada perfil: escolha o perfil e depois um personagem de séries famosas (infantis, geek e anime), ou só a cor.", "Each profile's photo: pick the profile, then a character from famous shows (kids, geek and anime), or just the color."},
         };
 
         /**
@@ -479,18 +523,24 @@ public class SettingsActivity extends Activity {
             String name, about, now = "";
             String icon = "sparkles";
             if (screen == MAIN) {
-                String[] info = mainInfo(Math.min(focus, 9));
+                String[] info = mainInfo(Math.min(focus, MAIN_LABELS_COUNT - 1));
                 name = info[0];
                 about = info[1];
                 now = info[2];
-                icon = MAIN_ICONS[Math.min(focus, 9)];
+                icon = MAIN_ICONS[Math.min(focus, MAIN_LABELS_COUNT - 1)];
             } else if (screen == MASTER) {
                 String[] labels = masterLabels(), values = masterValues();
-                int i = Math.min(focus, labels.length - 1);
+                int i = mi();
                 name = labels[i];
-                about = Ui.en ? MASTER_INFO[i][1] : MASTER_INFO[i][0];
+                if (i >= V_TMDB) {
+                    int[] old = {5, 6, 4, 1, 2, 7};
+                    about = legacyInfo(old[i - V_TMDB])[1];
+                    icon = VIRTUAL_ICONS[i - V_TMDB];
+                } else {
+                    about = Ui.en ? MASTER_INFO[i][1] : MASTER_INFO[i][0];
+                    icon = "play";
+                }
                 now = values[i];
-                icon = "play";
             } else if (screen == HOME_SETTINGS) {
                 name = Ui.tr("Aparência e clima", "Home Settings");
                 about = Ui.tr("OK ou as setas mudam o valor.", "OK or the arrows change the value.");
@@ -529,7 +579,11 @@ public class SettingsActivity extends Activity {
                     Ui.tr("Trocar o destaque a cada", "Next hero title every"), Ui.tr("Títulos por aba", "Titles per tab"),
                     Ui.tr("Infantil nas sugestões", "Kids titles in picks"), Ui.tr("Nome na saudação", "Name in the greeting"),
                     Ui.tr("Jogos do PC", "PC games"), Ui.tr("Entrada do computador", "Computer's input"),
-                    Ui.tr("Tela do computador", "Computer's screen"), Ui.tr("Gêneros bloqueados", "Blocked genres")};
+                    Ui.tr("Tela do computador", "Computer's screen"), Ui.tr("Gêneros bloqueados", "Blocked genres"),
+                    Ui.tr("Categorias da fileira", "Row categories"), Ui.tr("Perfis infantis", "Kids profiles"),
+                    Ui.tr("Apps do perfil infantil", "Kids profile apps"), Ui.tr("Jogos do perfil infantil", "Kids profile games"), Ui.tr("Foto do perfil", "Profile photo"),
+                    Ui.tr("Conta TMDB", "TMDB account"), Ui.tr("Conta Stremio", "Stremio account"), Ui.tr("Meus streamings", "Services"),
+                    Ui.tr("Idioma e clima", "Language and weather"), Ui.tr("Apps do dock", "Shelf"), Ui.tr("Categoria inicial", "Home category")};
         }
 
         private static final String[] TRAILER_APPS = {"", DeepLinks.SMARTTUBE, "com.google.android.youtube.tv"};
@@ -553,7 +607,282 @@ public class SettingsActivity extends Activity {
                             : Ui.tr("Não conectado", "Not connected"),
                     Prefs.gamesInput().isEmpty() ? Ui.tr("Nenhuma", "None") : Prefs.gamesInput(),
                     Prefs.gamesScreen().isEmpty() ? Ui.tr("Padrão do PC", "PC's default") : Prefs.getString("gamesScreenName", Prefs.gamesScreen()),
-                    blockedSummary()};
+                    blockedSummary(), categoriesSummary(), kidProfilesSummary(), kidAppsSummary(), kidGamesSummary(), Ui.tr("Personagens famosos", "Famous characters"),
+                    account(), stremioState(), "", "", "", Recs.categoryLabel()};
+        }
+
+        private String kidProfilesSummary() {
+            String names = Prefs.kidProfiles();
+            return names.isEmpty() ? Ui.tr("Nenhum", "None") : names.replace(",", ", ");
+        }
+
+        /** Settings › Foto do perfil: pick the profile, then a photo from famous shows (kids, geek and anime) or just its color. */
+        private void pickProfilePhoto() {
+            final List<String> keys = new ArrayList<>(), names = new ArrayList<>();
+            keys.add("@adult");
+            names.add(Prefs.greetName().isEmpty() ? Ui.tr("Adulto", "Adult") : Prefs.greetName());
+            for (String n : Prefs.kidProfiles().split(",")) if (!n.trim().isEmpty()) {
+                keys.add(n.trim());
+                names.add(n.trim());
+            }
+            final android.app.AlertDialog[] dlg = new android.app.AlertDialog[1];
+            List<View> tiles = new ArrayList<>();
+            for (int i = 0; i < keys.size(); i++) {
+                final String key = keys.get(i), shown = names.get(i);
+                int color = key.equals("@adult") ? 0xFF6B1420 : RedAlert.colorOf(key);
+                tiles.add(RedAlert.tile(activity, shown, color, shown.substring(0, 1).toUpperCase(), Avatars.of(key), 104, () -> {
+                    dlg[0].dismiss();
+                    showPhotoGrid(key, shown);
+                }));
+            }
+            dlg[0] = new RedAlert(activity).setTitle(Ui.tr("De quem é a foto?", "Whose photo?")).setView(RedAlert.strip(activity, tiles)).create();
+            dlg[0].show();
+            RedAlert.wide(dlg[0]);
+        }
+
+        private void showPhotoGrid(final String key, final String shown) {
+            final android.app.AlertDialog[] dlg = new android.app.AlertDialog[1];
+            final boolean[] closed = {false};
+            float density = activity.getResources().getDisplayMetrics().density;
+            android.widget.LinearLayout col = new android.widget.LinearLayout(activity);
+            col.setOrientation(android.widget.LinearLayout.VERTICAL);
+            col.setPadding(Math.round(34 * density), Math.round(10 * density), Math.round(34 * density), Math.round(16 * density));
+            col.setClipChildren(false);
+            col.setClipToPadding(false);
+            int baseColor = key.equals("@adult") ? 0xFF6B1420 : RedAlert.colorOf(key);
+            android.widget.LinearLayout first = new android.widget.LinearLayout(activity);
+            first.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            first.addView(RedAlert.tile(activity, Ui.tr("Só a cor", "Color only"), baseColor, shown.substring(0, 1).toUpperCase(), null, 88, () -> {
+                Prefs.setAvatar(key, "");
+                dlg[0].dismiss();
+                invalidate();
+            }));
+            col.addView(first);
+            for (final Avatars.Row row : Avatars.ROWS) {
+                final android.widget.LinearLayout block = new android.widget.LinearLayout(activity);
+                block.setOrientation(android.widget.LinearLayout.VERTICAL);
+                col.addView(block);
+                final android.widget.TextView title = new android.widget.TextView(activity);
+                title.setText(row.title);
+                title.setTextSize(17);
+                title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                title.setTextColor(0xFFFFFFFF);
+                title.setPadding(Math.round(10 * density), Math.round(14 * density), 0, Math.round(2 * density));
+                block.addView(title);
+                final android.widget.LinearLayout line = new android.widget.LinearLayout(activity);
+                line.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                line.setClipChildren(false);
+                line.setClipToPadding(false);
+                line.setPadding(0, Math.round(8 * density), 0, Math.round(8 * density));
+                final View[] slots = new View[5];
+                final String[] chosen = new String[5];
+                for (int n = 0; n < 5; n++) {
+                    final int slot = n;
+                    chosen[n] = "";
+                    slots[n] = RedAlert.tile(activity, "", 0x33FFFFFF, row.title.substring(0, 1), null, 88, () -> {
+                        if (chosen[slot].isEmpty()) return;   // its picture has not arrived yet
+                        Prefs.setAvatar(key, chosen[slot]);
+                        dlg[0].dismiss();
+                        invalidate();
+                    });
+                    line.addView(slots[n]);
+                }
+                block.addView(line);
+                Avatars.poolFor(row).execute(() -> {
+                    if (closed[0]) return;
+                    final List<Avatars.Face> faces = Avatars.faces(activity, row);
+                    if (faces.isEmpty()) {
+                        activity.runOnUiThread(() -> {
+                            title.setText(row.title + (row.kind == Avatars.SHOW && !Tmdb.hasKey()
+                                    ? Ui.tr("  (precisa da chave do TMDB)", "  (needs the TMDB key)") : Ui.tr("  (sem conexão)", "  (offline)")));
+                            for (View v : slots) v.setVisibility(View.GONE);
+                        });
+                        return;
+                    }
+                    for (int n = 0; n < 5; n++) {
+                        final int slot = n;
+                        if (n >= faces.size()) {
+                            activity.runOnUiThread(() -> slots[slot].setVisibility(View.GONE));
+                            continue;
+                        }
+                        if (closed[0]) return;
+                        final Avatars.Face f = faces.get(n);
+                        final android.graphics.Bitmap b = Avatars.circle(f.ref);
+                        if (b == null) {
+                            activity.runOnUiThread(() -> slots[slot].setVisibility(View.GONE));
+                            continue;
+                        }
+                        activity.runOnUiThread(() -> {
+                            chosen[slot] = f.ref;
+                            android.widget.TextView face = (android.widget.TextView) slots[slot].getTag();
+                            face.setText("");
+                            face.setBackground(new android.graphics.drawable.BitmapDrawable(activity.getResources(), b));
+                            ((android.widget.TextView) ((android.view.ViewGroup) slots[slot]).getChildAt(1)).setText(f.name);
+                        });
+                    }
+                });
+            }
+            android.widget.ScrollView sv = new android.widget.ScrollView(activity);
+            sv.addView(col);
+            dlg[0] = new RedAlert(activity).setTitle(Ui.tr("Foto de ", "Photo for ") + shown).setView(sv).create();
+            dlg[0].setOnDismissListener(d -> {
+                closed[0] = true;
+                Avatars.trim();
+            });
+            dlg[0].show();
+            RedAlert.wide(dlg[0]);
+        }
+
+        private String kidGamesSummary() {
+            String picked = Prefs.kidGames();
+            return picked.isEmpty() ? Ui.tr("Nenhum", "None") : picked.split(",").length + Ui.tr(" jogos", " games");
+        }
+
+        /** Settings › Jogos do perfil infantil: the PC's games a kid profile may play (none ticked = the Games tab stays empty). */
+        private void pickKidGames() {
+            if (!Games.configured()) {
+                Toast.makeText(activity, Ui.tr("Conecte o computador em Jogos do PC primeiro.", "Connect the computer under PC games first."), Toast.LENGTH_LONG).show();
+                return;
+            }
+            Games.list(list -> activity.runOnUiThread(() -> {
+                if (list == null || list.isEmpty()) {
+                    Toast.makeText(activity, Ui.tr("Não achei jogos no computador.", "No games found on the computer."), Toast.LENGTH_LONG).show();
+                    return;
+                }
+                final String[] names = new String[list.size()];
+                final boolean[] on = new boolean[list.size()];
+                java.util.Set<String> picked = new java.util.HashSet<>(java.util.Arrays.asList(Prefs.kidGames().split(",")));
+                for (int i = 0; i < list.size(); i++) {
+                    names[i] = list.get(i).name;
+                    on[i] = picked.contains(list.get(i).id);
+                }
+                new RedAlert(activity)
+                        .setTitle(Ui.tr("Jogos que o perfil infantil pode jogar", "Games a kids profile can play"))
+                        .setMultiChoiceItems(names, on, (d, which, checked) -> on[which] = checked)
+                        .setPositiveButton(Ui.tr("Salvar", "Save"), (d, w) -> {
+                            StringBuilder sb = new StringBuilder();
+                            for (int i = 0; i < list.size(); i++) if (on[i]) sb.append(sb.length() == 0 ? "" : ",").append(list.get(i).id);
+                            Prefs.setKidGames(sb.toString());
+                            invalidate();
+                        })
+                        .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                        .show();
+            }));
+        }
+
+        private String kidAppsSummary() {
+            String picked = Prefs.kidApps();
+            return picked.isEmpty() ? Ui.tr("Todos da prateleira", "All on the shelf") : picked.split(",").length + Ui.tr(" apps", " apps");
+        }
+
+        /** Settings › Perfis infantis: pick one to delete it, or make a new one. */
+        private void manageKidProfiles() {
+            final List<String> kids = new ArrayList<>();
+            for (String n : Prefs.kidProfiles().split(",")) if (!n.trim().isEmpty()) kids.add(n.trim());
+            final List<String> items = new ArrayList<>(kids);
+            items.add(Ui.tr("+ Novo perfil infantil", "+ New kids profile"));
+            new RedAlert(activity)
+                    .setTitle(Ui.tr("Perfis infantis (OK num nome apaga)", "Kids profiles (OK on a name deletes it)"))
+                    .setItems(items.toArray(new String[0]), (d, which) -> {
+                        if (which == items.size() - 1) {
+                            final android.widget.EditText input = new android.widget.EditText(activity);
+                            input.setSingleLine(true);
+                            input.setHint(Ui.tr("Nome da criança", "Child's name"));
+                            new RedAlert(activity)
+                                    .setTitle(Ui.tr("Novo perfil infantil", "New kids profile"))
+                                    .setView(input)
+                                    .setPositiveButton(Ui.tr("Criar", "Create"), (d2, w2) -> {
+                                        String name = input.getText().toString().trim().replace(",", " ");
+                                        if (name.isEmpty() || kids.contains(name)) return;
+                                        kids.add(name);
+                                        Prefs.setKidProfiles(android.text.TextUtils.join(",", kids));
+                                        invalidate();
+                                    })
+                                    .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                                    .show();
+                            return;
+                        }
+                        final String gone = kids.get(which);
+                        new RedAlert(activity)
+                                .setTitle(Ui.tr("Apagar o perfil ", "Delete the profile ") + gone + "?")
+                                .setPositiveButton(Ui.tr("Apagar", "Delete"), (d2, w2) -> {
+                                    kids.remove(gone);
+                                    Prefs.setKidProfiles(android.text.TextUtils.join(",", kids));
+                                    if (gone.equals(Prefs.profile())) Prefs.setProfile("");
+                                    invalidate();
+                                })
+                                .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                                .show();
+                    })
+                    .setNegativeButton(Ui.tr("Fechar", "Close"), null)
+                    .show();
+        }
+
+        /** Settings › Apps do perfil infantil: the apps a kid profile can open (none ticked = the whole shelf). */
+        private void pickKidApps() {
+            final List<HomeApps.Item> apps = new ArrayList<>();
+            final java.util.Set<String> seen = new java.util.HashSet<>();
+            for (HomeApps.Item it : HomeApps.shelf(getContext(), false)) if (it.pkg != null && it.kind == HomeApps.APP && seen.add(it.pkg)) apps.add(it);
+            for (HomeApps.Item it : HomeApps.others(getContext())) if (it.pkg != null && it.kind == HomeApps.APP && seen.add(it.pkg)) apps.add(it);
+            final String[] names = new String[apps.size()];
+            final boolean[] on = new boolean[apps.size()];
+            java.util.Set<String> picked = new java.util.HashSet<>(java.util.Arrays.asList(Prefs.kidApps().split(",")));
+            for (int i = 0; i < apps.size(); i++) {
+                names[i] = apps.get(i).label;
+                on[i] = picked.contains(apps.get(i).pkg);
+            }
+            new RedAlert(activity)
+                    .setTitle(Ui.tr("Apps que o perfil infantil abre", "Apps a kids profile can open"))
+                    .setMultiChoiceItems(names, on, (d, which, checked) -> on[which] = checked)
+                    .setPositiveButton(Ui.tr("Salvar", "Save"), (d, w) -> {
+                        StringBuilder sb = new StringBuilder();
+                        for (int i = 0; i < apps.size(); i++) if (on[i]) sb.append(sb.length() == 0 ? "" : ",").append(apps.get(i).pkg);
+                        Prefs.setKidApps(sb.toString());
+                        invalidate();
+                    })
+                    .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                    .show();
+        }
+
+        /** "Todas" or "9 de 12". */
+        private String categoriesSummary() {
+            int total = Recs.CATEGORIES.length, on = 0;
+            String hidden = "," + Prefs.hiddenCategories() + ",";
+            for (String[] c : Recs.CATEGORIES) if (!hidden.contains("," + c[0] + ",")) on++;
+            return on == total ? Ui.tr("Todas", "All") : on + Ui.tr(" de ", " of ") + total;
+        }
+
+        /** Settings › Categorias da fileira: tick the lists the row under the tabs offers. */
+        private void pickCategories() {
+            String[][] all = Recs.CATEGORIES;
+            String[] names = new String[all.length];
+            boolean[] on = new boolean[all.length];
+            String hidden = "," + Prefs.hiddenCategories() + ",";
+            for (int i = 0; i < all.length; i++) {
+                names[i] = all[i][1];
+                on[i] = !hidden.contains("," + all[i][0] + ",");
+            }
+            new RedAlert(activity)
+                    .setTitle(Ui.tr("Categorias que aparecem", "Categories shown"))
+                    .setMultiChoiceItems(names, on, (d, which, checked) -> on[which] = checked)
+                    .setPositiveButton(Ui.tr("Salvar", "Save"), (d, w) -> {
+                        StringBuilder sb = new StringBuilder();
+                        int shown = 0;
+                        for (int i = 0; i < all.length; i++) {
+                            if (on[i]) shown++;
+                            else sb.append(sb.length() == 0 ? "" : ",").append(all[i][0]);
+                        }
+                        if (shown == 0) {
+                            Toast.makeText(activity, Ui.tr("Deixe ao menos uma categoria ligada.", "Leave at least one category on."), Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        Prefs.setHiddenCategories(sb.toString());
+                        Recs.get(getContext()).clearCategories();
+                        HomeData.get(getContext()).settingsChanged();
+                        invalidate();
+                    })
+                    .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                    .show();
         }
 
         /** "Nenhum", "Terror" or "Terror, Romance e mais 2". */
@@ -576,7 +905,7 @@ public class SettingsActivity extends Activity {
                 names[i] = Ui.tr(all[i][1], all[i][2]);
                 on[i] = keys.contains("," + all[i][0] + ",");
             }
-            new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            new RedAlert(activity)
                     .setTitle(Ui.tr("Não sugerir estes gêneros", "Never suggest these genres"))
                     .setMultiChoiceItems(names, on, (d, which, checked) -> on[which] = checked)
                     .setPositiveButton(Ui.tr("Salvar", "Save"), (d, w) -> {
@@ -599,7 +928,7 @@ public class SettingsActivity extends Activity {
 
         private void adjustMaster(int dir) {
             Context ctx = getContext();
-            switch (focus) {
+            switch (mi()) {
                 case 0: Prefs.setTabCont(!Prefs.tabCont()); break;
                 case 1: Prefs.setTabCat(!Prefs.tabCat()); break;
                 case 2: {
@@ -647,7 +976,7 @@ public class SettingsActivity extends Activity {
                     names[0] = Ui.tr("Padrão do PC", "PC's default");
                     names[1] = Ui.tr("Não trocar as telas", "Don't switch screens");
                     for (int i = 0; i < list.size(); i++) names[i + 2] = list.get(i)[1];
-                    new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    new RedAlert(activity)
                             .setTitle(Ui.tr("Tela do computador", "Computer's screen"))
                             .setItems(names, (d, which) -> {
                                 Prefs.setGamesScreen(which == 0 ? "" : which == 1 ? "none" : list.get(which - 2)[0]);
@@ -664,7 +993,7 @@ public class SettingsActivity extends Activity {
             field.setSingleLine(true);
             field.setText(Prefs.greetName());
             field.setHint(Ui.tr("Seu nome (vazio = só \"Bom dia\")", "Your name (empty = just \"Good morning\")"));
-            new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            new RedAlert(activity)
                     .setTitle(Ui.tr("Nome na saudação", "Name in the greeting"))
                     .setView(field)
                     .setPositiveButton(Ui.tr("Salvar", "Save"), (d, which) -> {
@@ -691,7 +1020,7 @@ public class SettingsActivity extends Activity {
                 names[i] = all[i][1];
                 if (all[i][0].equals(Recs.category())) at = i;
             }
-            new android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            new RedAlert(activity)
                     .setTitle(Ui.tr("Categoria inicial", "Home category"))
                     .setSingleChoiceItems(names, at, (d, which) -> {
                         d.dismiss();
@@ -708,7 +1037,7 @@ public class SettingsActivity extends Activity {
         private void linkStremio() {
             android.content.SharedPreferences sp = getContext().getSharedPreferences("stremio", Context.MODE_PRIVATE);
             if (!sp.getString("auth", "").isEmpty()) {
-                new android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                new RedAlert(activity)
                         .setTitle(Ui.tr("Conta Stremio", "Stremio account"))
                         .setMessage(Ui.tr("Conectada. O Continuar assistindo vem dela.", "Connected. Continue watching comes from it."))
                         .setPositiveButton(Ui.tr("Desconectar", "Disconnect"), (d, w2) -> {
@@ -719,7 +1048,7 @@ public class SettingsActivity extends Activity {
                         .show();
                 return;
             }
-            final android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            final android.app.AlertDialog dialog = new RedAlert(activity)
                     .setTitle(Ui.tr("Conta Stremio", "Stremio account"))
                     .setMessage(Ui.tr("Pedindo um código…", "Getting a code…"))
                     .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
@@ -758,18 +1087,12 @@ public class SettingsActivity extends Activity {
             return Tmdb.signedIn(getContext()) ? Tmdb.accountName(getContext()) : Ui.tr("Não conectada", "Not connected");
         }
 
-        /** Home screen picks: status, and the credit TMDB asks for. */
+        /** Only what is wrong with the titles (no key, an error), and the credit TMDB asks for. */
         private float drawRecs(Canvas c, float y, float x) {
-            c.drawText(Ui.tr("RECOMENDAÇÕES", "RECOMMENDATIONS"), x, y, header);
-            String line;
             String error = recs.optString("error");
-            int count = recs.optInt("count");
-            if (!hasKey) line = Ui.tr("Sem chave do TMDB: digite a sua em Conta TMDB.", "No TMDB key: type yours under TMDB account.");
-            else if (!error.isEmpty()) line = Ui.tr("Erro: ", "Error: ") + error + ".";
-            else if (count > 0) line = Ui.tr("Ligadas · " + count + " títulos nos apps da TV, 3 novos a cada hora.",
-                    "On · " + count + " titles from the TV's apps, 3 new ones every hour.");
-            else line = Ui.tr("Buscando os títulos…", "Fetching titles…");
-            c.drawText(TextUtils.ellipsize(line, notice, (PANEL_R - PANEL_X - 96) * k, TextUtils.TruncateAt.END).toString(), x, y + 42 * k, notice);
+            String line = !hasKey ? Ui.tr("Sem chave do TMDB: digite a sua em Conta TMDB.", "No TMDB key: type yours under TMDB account.")
+                    : !error.isEmpty() ? Ui.tr("Erro: ", "Error: ") + error + "." : "";
+            if (!line.isEmpty()) c.drawText(TextUtils.ellipsize(line, notice, (PANEL_R - PANEL_X - 96) * k, TextUtils.TruncateAt.END).toString(), x, y + 42 * k, notice);
             version.setTextAlign(Paint.Align.LEFT);
             c.drawText(Ui.tr("Usa a API do TMDB, sem endosso ou certificação do TMDB.",
                     "This product uses the TMDB API but is not endorsed or certified by TMDB."), x, y + 78 * k, version);
@@ -820,6 +1143,7 @@ public class SettingsActivity extends Activity {
                     if (down && focus > 0) focus--;
                     else if (down && screen == REMOTE_KEYS && keysScroll > 0) keysScroll--;
                     else if (down && scrolling() && pickScroll > 0) pickScroll--;
+                    else if (down && e.getRepeatCount() == 0) wrapTo(true);   // ↑ on the first row: the last one
                     invalidate();
                     spoken.focusMoved();
                     return true;
@@ -827,6 +1151,7 @@ public class SettingsActivity extends Activity {
                     if (down && focus < rowCount() - 1) focus++;
                     else if (down && screen == REMOTE_KEYS && keysScroll + rowCount() < RemoteKeys.buttons(getContext()).size()) keysScroll++;
                     else if (down && scrolling() && pickScroll + rowCount() < listSize()) pickScroll++;
+                    else if (down && e.getRepeatCount() == 0) wrapTo(false);   // ↓ on the last row: the first one
                     invalidate();
                     spoken.focusMoved();
                     return true;
@@ -875,8 +1200,14 @@ public class SettingsActivity extends Activity {
                                 focus = pickFor - 1 - keysScroll;
                                 screen = REMOTE_KEYS;
                             } else {
-                                focus = screen == HOME_SETTINGS ? 1 : screen == MASTER ? 8 : screen == SHELF_EDIT ? 2 : screen == REMOTE_KEYS ? 3 : 0;
-                                screen = MAIN;
+                                if (screen == HOME_SETTINGS || screen == SHELF_EDIT) {   // back to the Home screen list, on the row it came from
+                                    focus = positionIn(1, screen == HOME_SETTINGS ? V_HOME : V_DOCK);
+                                    group = 1;
+                                    screen = MASTER;
+                                } else {
+                                    focus = screen == MASTER ? group + 1 : screen == REMOTE_KEYS ? 5 : 0;
+                                    screen = MAIN;
+                                }
                             }
                         }
                         backDown = false;
@@ -892,13 +1223,13 @@ public class SettingsActivity extends Activity {
         // MARK: - Home Settings and Remote Buttons
 
         private static final String[] LANGUAGES = {"auto", "pt", "en", "es", "de", "ru", "fr", "tr", "he"}, UNITS = {"auto", "C", "F"};
-        private static final String[] CLOCKS = {"auto", "24h", "12h"}, STYLES = {"photos", "aurora", "google"};
+        private static final String[] CLOCKS = {"auto", "24h", "12h"}, STYLES = {"photos", "mosaic", "clock", "google"};
         /** Home Settings: language, temperature, theme, clock, weather, city, quotes, then one row per coin. */
         private static final int CLOCK_ROW = 2, WEATHER_ROW = 3, CITY_ROW = 4, QUOTES_ROW = 5, COIN_ROWS = 6;
 
         private static String styleName(String style) {
-            return style.equals("aurora") ? Ui.tr("Relógio e aurora", "Clock and aurora")
-                    : style.equals("google") ? Ui.tr("Fotos do Google", "Google Photos") : Ui.tr("Destaques", "Picks");
+            return style.equals("google") ? Ui.tr("Fotos do Google", "Google Photos") : style.equals("mosaic") ? Ui.tr("Mosaico de capas", "Cover mosaic")
+                    : style.equals("clock") ? Ui.tr("Só o relógio", "Clock only") : Ui.tr("Destaques", "Picks");
         }
 
         private boolean dollar() {
@@ -906,7 +1237,11 @@ public class SettingsActivity extends Activity {
         }
 
         private String[] settingLabels() {
-            if (screen == MASTER) return masterLabels();
+            if (screen == MASTER) {
+                String[] all = masterLabels(), out = new String[GROUPS[group].length];
+                for (int i = 0; i < out.length; i++) out[i] = all[GROUPS[group][i]];
+                return out;
+            }
             List<String> l = new ArrayList<>();
             l.add(Ui.tr("Idioma", "Language"));
             l.add(Ui.tr("Temperatura", "Temperature"));
@@ -917,7 +1252,11 @@ public class SettingsActivity extends Activity {
         }
 
         private String[] settingValues() {
-            if (screen == MASTER) return masterValues();
+            if (screen == MASTER) {
+                String[] all = masterValues(), out = new String[GROUPS[group].length];
+                for (int i = 0; i < out.length; i++) out[i] = all[GROUPS[group][i]];
+                return out;
+            }
             String[] labels = settingLabels();
             String[] v = new String[labels.length];
             String lang = Prefs.language();
@@ -1026,7 +1365,7 @@ public class SettingsActivity extends Activity {
             field.setSingleLine(true);
             field.setHint(Ui.tr("Digite o nome da cidade", "Type the city's name"));
             field.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-            AlertDialog dialog = new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            AlertDialog dialog = new RedAlert(activity)
                     .setTitle(Ui.tr("Cidade", "City"))
                     .setView(field)
                     .setPositiveButton(Ui.tr("Buscar", "Search"), (d, which) -> searchCity(field.getText().toString()))
@@ -1070,7 +1409,7 @@ public class SettingsActivity extends Activity {
         /** The language as a list to pick from, instead of stepping through it with the arrows. */
         private void chooseLanguage() {
             int at = Math.max(0, java.util.Arrays.asList(LANGUAGES).indexOf(Prefs.language()));
-            new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            new RedAlert(activity)
                     .setTitle(Ui.tr("Idioma", "Language"))
                     .setSingleChoiceItems(LANGUAGE_NAMES, at, (d, which) -> {
                         d.dismiss();
@@ -1089,7 +1428,7 @@ public class SettingsActivity extends Activity {
             field.setSingleLine(true);
             field.setHint(Ui.tr("Chave da API ou token de leitura", "API key or read access token"));
             field.setImeOptions(EditorInfo.IME_ACTION_DONE);
-            AlertDialog dialog = new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            AlertDialog dialog = new RedAlert(activity)
                     .setTitle(Ui.tr("Chave do TMDB", "TMDB key"))
                     .setMessage(Ui.tr("Grátis em themoviedb.org › Configurações › API.", "Free at themoviedb.org › Settings › API."))
                     .setView(field)
@@ -1145,6 +1484,20 @@ public class SettingsActivity extends Activity {
                     if (!message.isEmpty()) handler.postDelayed(() -> { cityStatus = ""; invalidate(); }, 4000);
                 });
             }).start();
+        }
+
+        /** The ends of a list loop round: from the first row to the last (toEnd) or from the last to the first. */
+        private void wrapTo(boolean toEnd) {
+            if (rowCount() == 0) return;
+            if (toEnd) {
+                focus = rowCount() - 1;
+                if (screen == REMOTE_KEYS) keysScroll = Math.max(0, RemoteKeys.buttons(getContext()).size() - rowCount());
+                else if (scrolling()) pickScroll = Math.max(0, listSize() - rowCount());
+            } else {
+                focus = 0;
+                keysScroll = 0;
+                pickScroll = 0;
+            }
         }
 
         private boolean scrolling() {
@@ -1286,10 +1639,11 @@ public class SettingsActivity extends Activity {
             String[] labels = settingLabels();
             String[] values = settingValues();
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
-            c.drawText(screen == MASTER ? Ui.tr("Abas e reprodução", "Tabs and Stremio") : Ui.tr("Aparência e clima", "Home Settings"),
+            c.drawText(screen == MASTER ? mainLabels()[group + 1] : Ui.tr("Idioma e clima", "Language and weather"),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
-            for (int i = 0; i < labels.length; i++) {
-                float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
+            int first = firstRow(), last = Math.min(labels.length, first + LIST_VISIBLE);
+            for (int i = first; i < last; i++) {
+                float y = (LIST_TOP + 20 + (i - first) * (LIST_ROW_H + LIST_ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
@@ -1301,8 +1655,17 @@ public class SettingsActivity extends Activity {
                 c.drawText(values[i], rowRect.right - 30 * k, base, rowValue);
             }
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
-            float hy = (LIST_TOP + 20 + labels.length * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
-            c.drawText(Ui.tr("OK ou as setas mudam o valor.", "OK or the arrows change the value."), LIST_X * k + 30 * k, hy, hint);
+            if (labels.length > LIST_VISIBLE) {   // more rows than fit: a thin scroll bar at the right of the list
+                float trackTop = (LIST_TOP + 20) * k, trackH = LIST_VISIBLE * (LIST_ROW_H + LIST_ROW_GAP) * k - LIST_ROW_GAP * k;
+                float bx = (LIST_R + 18) * k, bw = 6 * k;
+                fill.setColor(0x26FFFFFF);
+                tmp.set(bx, trackTop, bx + bw, trackTop + trackH);
+                c.drawRoundRect(tmp, bw / 2, bw / 2, fill);
+                float thumbH = trackH * LIST_VISIBLE / labels.length, thumbTop = trackTop + (trackH - thumbH) * first / (labels.length - LIST_VISIBLE);
+                fill.setColor(0xCCFFFFFF);
+                tmp.set(bx, thumbTop, bx + bw, thumbTop + thumbH);
+                c.drawRoundRect(tmp, bw / 2, bw / 2, fill);
+            }
         }
 
         /** The remote's configurable buttons, nine at a time, each with what it does now. */
@@ -1358,18 +1721,51 @@ public class SettingsActivity extends Activity {
                 return;
             } else if (screen == REMOTE_KEYS) {
                 openPicker(keysScroll + focus + 1);
-            } else if (screen == MASTER && focus == GREET_ROW) {
+            } else if (screen == MASTER && mi() == V_TMDB) {
+                // A release APK comes without a key: it is typed here once (or pushed in config.json "tmdb_key").
+                if (Tmdb.hasKey()) activity.startActivity(new Intent(c, TmdbLoginActivity.class)); else askTmdbKey();
+                return;
+            } else if (screen == MASTER && mi() == V_STREMIO) {
+                linkStremio();
+                return;
+            } else if (screen == MASTER && mi() == V_SERVICES) {
+                activity.startActivity(new Intent(c, ServicesActivity.class));
+                return;
+            } else if (screen == MASTER && mi() == V_HOME) {
+                screen = HOME_SETTINGS;
+                focus = 0;
+            } else if (screen == MASTER && mi() == V_DOCK) {
+                openShelfEditor();
+            } else if (screen == MASTER && mi() == V_CATEGORY) {
+                chooseHomeCategory();
+                return;
+            } else if (screen == MASTER && mi() == GREET_ROW) {
                 askGreeting();
                 return;
-            } else if (screen == MASTER && focus == GREET_ROW + 3) {
+            } else if (screen == MASTER && mi() == GREET_ROW + 3) {
                 pickPcScreen();
                 return;
-            } else if (screen == MASTER && focus == GREET_ROW + 4) {
+            } else if (screen == MASTER && mi() == GREET_ROW + 4) {
                 pickBlockedGenres();
                 return;
-            } else if (screen == MASTER && focus == GREET_ROW + 1) {
+            } else if (screen == MASTER && mi() == GREET_ROW + 5) {
+                pickCategories();
+                return;
+            } else if (screen == MASTER && mi() == GREET_ROW + 6) {
+                manageKidProfiles();
+                return;
+            } else if (screen == MASTER && mi() == GREET_ROW + 7) {
+                pickKidApps();
+                return;
+            } else if (screen == MASTER && mi() == GREET_ROW + 8) {
+                pickKidGames();
+                return;
+            } else if (screen == MASTER && mi() == GREET_ROW + 9) {
+                pickProfilePhoto();
+                return;
+            } else if (screen == MASTER && mi() == GREET_ROW + 1) {
                 if (Games.configured()) {
-                    new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    new RedAlert(activity)
                             .setTitle(Ui.tr("Desconectar o computador?", "Disconnect the computer?"))
                             .setMessage(Ui.tr("A aba Jogos e o dock de jogos somem até você conectar de novo.", "The Games tab and dock go away until you connect again."))
                             .setPositiveButton(Ui.tr("Desconectar", "Disconnect"), (d, which) -> {
@@ -1409,31 +1805,16 @@ public class SettingsActivity extends Activity {
             } else if (focus == 0) {
                 pause();
                 activity.showPreview();
-            } else if (focus == 1) {
-                screen = HOME_SETTINGS;
+            } else if (focus >= 1 && focus <= 4) {
+                group = focus - 1;   // Accounts, Home screen, PC games, Profiles and kids
+                screen = MASTER;
                 focus = 0;
-            } else if (focus == 2) {
-                openShelfEditor();
-            } else if (focus == 3) {
+            } else if (focus == 5) {
                 loadApps();
                 askKeysService();
                 screen = REMOTE_KEYS;
                 focus = 0;
                 keysScroll = 0;
-            } else if (focus == 4) {
-                activity.startActivity(new Intent(c, ServicesActivity.class));
-            } else if (focus == 5) {
-                // A release APK comes without a key: it is typed here once (or pushed in config.json "tmdb_key").
-                if (Tmdb.hasKey()) activity.startActivity(new Intent(c, TmdbLoginActivity.class)); else askTmdbKey();
-            } else if (focus == 6) {
-                linkStremio();
-                return;
-            } else if (focus == 7) {
-                chooseHomeCategory();
-                return;
-            } else if (focus == 8) {
-                screen = MASTER;
-                focus = 0;
             } else {
                 activity.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             }
