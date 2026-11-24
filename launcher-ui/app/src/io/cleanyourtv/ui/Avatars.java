@@ -370,6 +370,17 @@ final class Avatars {
         }
     }
 
+    /** The profiles' own photos, made round and kept in memory as soon as the launcher opens, so no tile waits for them. */
+    static void warmProfiles(Context c) {
+        bundled(c);
+        for (String part : Prefs.avatars().split(",")) {
+            int eq = part.indexOf('=');
+            if (eq <= 0) continue;
+            final String ref = part.substring(eq + 1);
+            POOL.execute(() -> circle(ref));
+        }
+    }
+
     /** Frees the pictures of the picker, keeping the ones the profiles use. */
     static void trim() {
         Set<String> keep = new HashSet<>();

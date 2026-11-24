@@ -112,6 +112,8 @@ final class Recs {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     // Categories load on their own threads: a list never waits behind the hourly picks or another list.
     private final ExecutorService catIo = Executors.newFixedThreadPool(2);
+    /** Backdrops get their own two workers: a photo never waits behind details or lists. */
+    private final ExecutorService photoIo = Executors.newFixedThreadPool(2);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<Listener> listeners = new ArrayList<>();
     // This hour's, built and ready to draw, in the order they were last drawn: the one unused longest goes first.
@@ -140,6 +142,12 @@ final class Recs {
         try {
             String saved = cache.getString("picks", null);
             if (saved != null) picks = parse(new JSONArray(saved));
+            String savedCont = cache.getString("cont", null);
+            if (savedCont != null) {   // what was being watched, with synopses: shows at once on boot, before the network is up
+                List<Pick> cont = parse(new JSONArray(savedCont));
+                for (Pick p : cont) p.cont = true;
+                continuing = cont;
+            }
             period = cache.getInt("period", -1);
             listAt = cache.getLong("listAt", 0);
             listLanguage = cache.getString("language", cache.getBoolean("english", false) ? "en" : "pt");
@@ -491,7 +499,7 @@ final class Recs {
             if (failed != null && System.currentTimeMillis() - failed < 600_000L) return null;
             if (!pending.add(key)) return null;
         }
-        io.execute(() -> {
+        photoIo.execute(() -> {
             try {
                 loadImage(p, key);
             } finally {
@@ -600,15 +608,24 @@ final class Recs {
                     p.video = st.optString("video_id");
                     p.pkg = DeepLinks.STREMIO;
                     p.app = "Stremio";
-                    try {   // the synopsis and a second picture (image B), like every other title
-                        JSONObject d = get("/" + p.kind + "/" + p.id + "?language=" + lang()
-                                + "&append_to_response=images&include_image_language=null," + Ui.language + ",en");
-                        p.overview = d.optString("overview", "").trim();
-                        String[] best = bestBackdrops(d.optJSONObject("images"));
-                        if (best[0] != null) p.backdrop = best[0];
-                        p.backdropB = best[1];
-                    } catch (Exception e) {
-                        AppLog.w("continue details: " + e.getMessage());
+                    // the synopsis and a second picture (image B), like every other title; the network is often not up
+                    // yet when the TV has just turned on, so it tries a few times and otherwise keeps the saved synopsis
+                    for (int tries = 0; tries < 3; tries++) {
+                        try {
+                            JSONObject d = get("/" + p.kind + "/" + p.id + "?language=" + lang()
+                                    + "&append_to_response=images&include_image_language=null," + Ui.language + ",en");
+                            p.overview = d.optString("overview", "").trim();
+                            String[] best = bestBackdrops(d.optJSONObject("images"));
+                            if (best[0] != null) p.backdrop = best[0];
+                            p.backdropB = best[1];
+                            break;
+                        } catch (Exception e) {
+                            AppLog.w("continue details: " + e.getMessage());
+                            try { Thread.sleep(2000); } catch (InterruptedException ie) { break; }
+                        }
+                    }
+                    if (p.overview.isEmpty()) {
+                        for (Pick old : continuing) if (old.id == p.id && old.kind.equals(p.kind)) p.overview = old.overview;
                     }
                     p.detailed = true;
                     p.cont = true;
@@ -617,9 +634,11 @@ final class Recs {
                 }
             }
             continuing = out;
+            saveContinue(out);
             notifyListeners();
         } catch (Exception e) {
             AppLog.w("stremio library: " + e.getMessage());
+            continueAt = System.currentTimeMillis() - 4 * 60_000L;   // offline just now: try again in a minute
         }
     }
 
@@ -1283,6 +1302,20 @@ final class Recs {
         }
     }
 
+    private void saveContinue(List<Pick> list) {
+        try {
+            JSONArray a = new JSONArray();
+            for (Pick p : list) {
+                a.put(new JSONObject().put("id", p.id).put("kind", p.kind).put("title", p.title).put("backdrop", p.backdrop)
+                        .put("backdropB", p.backdropB == null ? "" : p.backdropB).put("overview", p.overview)
+                        .put("meta", p.meta).put("app", p.app == null ? "" : p.app).put("pkg", p.pkg == null ? "" : p.pkg)
+                        .put("detailed", true).put("imdb", p.imdb).put("video", p.video).put("progress", (double) p.progress));
+            }
+            cache.edit().putString("cont", a.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
     private static List<Pick> parse(JSONArray a) {
         List<Pick> out = new ArrayList<>();
         for (int i = 0; i < a.length(); i++) {
@@ -1299,6 +1332,9 @@ final class Recs {
             p.app = o.optString("app").isEmpty() ? null : o.optString("app");
             p.pkg = o.optString("pkg").isEmpty() ? null : o.optString("pkg");
             p.detailed = o.optBoolean("detailed");
+            p.imdb = o.optString("imdb", null);
+            p.video = o.optString("video", null);
+            p.progress = (float) o.optDouble("progress", 0);
             out.add(p);
         }
         return out;

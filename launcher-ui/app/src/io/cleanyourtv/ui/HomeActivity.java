@@ -16,6 +16,7 @@ public class HomeActivity extends Activity {
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Ui.init(this);
+        Avatars.warmProfiles(this);
         home = new HomeView(this);
         setContentView(home);
         getWindow().setBackgroundDrawable(null);

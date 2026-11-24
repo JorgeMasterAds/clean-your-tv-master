@@ -1044,51 +1044,28 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 sky.setScaleY(1);
                 curZ = 1;
                 curX = curY = 0;
-                driftPhoto = null;   // coming back, the motion starts from rest
                 motionDirty = true;   // the intro's settle, if any, sets the scale again
             }
             return false;
         }
         driftWas = true;
-        // The screensaver's Highlights motion (DreamView.place): each new photo zooms from 1 to 1.1 (or back) over
-        // 33 s while it pans toward a corner, alternating photo by photo; a photo that stays longer goes back the
-        // same way, so it never stops.
-        if (bgTo != driftPhoto) {
-            // A new photo (another title, another tab): its motion starts from wherever the layer is now and blends
-            // into its own path during the crossfade, so the picture never jumps or stretches.
-            driftPhoto = bgTo;
-            driftAt = up;
-            driftN++;
-            fromZ = curZ;
-            fromX = curX;
-            fromY = curY;
-        }
-        // gentle on purpose (asked on 24/11): 3% of zoom over 40 s; 8% over 33 s felt too much behind the text
-        float cycle = (up - driftAt) / 40_000f;
-        float u = cycle % 2 < 1 ? cycle % 1 : 1 - cycle % 1;
-        u = u * u * (3 - 2 * u);   // eased at both ends, so the turn back is smooth
-        boolean zoomIn = driftN % 2 == 0;
-        float panX = (driftN / 2) % 2 == 0 ? 0.8f : -0.8f, panY = driftN % 3 == 0 ? -0.6f : 0.6f;
-        float f = zoomIn ? u : 1 - u;
-        float z = 1 + 0.03f * f;
-        // the layer scales around its center: a shift up to (z - 1) / 2 of its size never shows an edge
-        float x = (z - 1) / 2 * panX * f, y = (z - 1) / 2 * panY * f;
-        float b = smoothstep(0, 1, Ui.clamp((up - driftAt) / 3000f));
-        curZ = fromZ + (z - fromZ) * b;
-        curX = fromX + (x - fromX) * b;
-        curY = fromY + (y - fromY) * b;
-        float it = smoothstep(0, 1, intro), settle = 1 + 0.05f * (1 - it) * (1 - it);
-        sky.setScaleX(curZ * settle);
-        sky.setScaleY(curZ * settle);
+        // The screensaver Highlights' motion (DreamView.place): zoom 1 to 1.1 over 33 s while panning toward a corner, then
+        // the same way back. One motion for every photo and tab, on a clock that never restarts, so changing photo or tab
+        // only crossfades the picture and the movement goes on. A sine, so the turns at both ends are soft but never stall.
+        float cycle = up / 33_000f;
+        float u = (1 - (float) Math.cos(Math.PI * cycle)) / 2;
+        float z = 1 + 0.1f * u;
+        curZ = z;
+        curX = (z - 1) / 2 * 0.8f * u;
+        curY = (z - 1) / 2 * 0.6f * u;
+        sky.setScaleX(curZ);
+        sky.setScaleY(curZ);
         sky.setTranslationX(sky.getWidth() * curX);
         sky.setTranslationY(sky.getHeight() * curY);
         return true;
     }
 
-    private Backdrop driftPhoto;
-    private long driftAt;
-    private int driftN;
-    private float curZ = 1, curX, curY, fromZ = 1, fromX, fromY;
+    private float curZ = 1, curX, curY;
 
     private void wake() {
         if (!running || !idle) return;
